@@ -193,6 +193,10 @@ export default function Analisi() {
       .sort((a, b) => b.ricavi - a.ricavi)
   }, [data])
 
+  const topSuppliersChart = supplierAnalysis.slice(0, 10)
+  const categoriesChart = categoryAnalysis.slice(0, 10)
+  const pvProductivityChart = [...pvAnalysis].sort((a, b) => b.produttivita - a.produttivita)
+
   if (!user) {
     return (
       <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
@@ -244,6 +248,31 @@ export default function Analisi() {
           </tr>
         </tbody>
       </table>
+
+      <h2 style={{ marginTop: 30 }}>Grafico top fornitori</h2>
+      <BarChart
+        rows={topSuppliersChart}
+        valueKey="imponibile"
+        labelKey="name"
+        valueFormatter={formatEuro}
+      />
+
+      <h2 style={{ marginTop: 30 }}>Grafico categorie</h2>
+      <BarChart
+        rows={categoriesChart}
+        valueKey="imponibile"
+        labelKey="name"
+        valueFormatter={formatEuro}
+      />
+
+      <h2 style={{ marginTop: 30 }}>Grafico produttività PV</h2>
+      <BarChart
+        rows={pvProductivityChart}
+        valueKey="produttivita"
+        labelKey="name"
+        valueFormatter={formatEuro}
+        threshold={40}
+      />
 
       <h2 style={{ marginTop: 30 }}>Analisi per punto vendita</h2>
       <table style={table}>
@@ -340,6 +369,58 @@ export default function Analisi() {
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+function BarChart({ rows, valueKey, labelKey, valueFormatter, threshold = null }) {
+  const max = Math.max(...rows.map((r) => Number(r[valueKey] || 0)), 0)
+
+  if (!rows.length) {
+    return <p>Nessun dato disponibile.</p>
+  }
+
+  return (
+    <div style={{ border: '1px solid #ddd', padding: 16, marginTop: 12 }}>
+      {rows.map((row, index) => {
+        const value = Number(row[valueKey] || 0)
+        const width = max > 0 ? (value / max) * 100 : 0
+        const isBelowThreshold = threshold !== null && value < threshold
+
+        return (
+          <div key={row.id || index} style={{ marginBottom: 14 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 16,
+                marginBottom: 4,
+                fontSize: 14,
+              }}
+            >
+              <span>{row[labelKey]}</span>
+              <span>{valueFormatter(value)}</span>
+            </div>
+
+            <div
+              style={{
+                height: 18,
+                background: '#f1f1f1',
+                position: 'relative',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  width: `${width}%`,
+                  height: '100%',
+                  background: isBelowThreshold ? '#d9534f' : '#5bc0de',
+                }}
+              />
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
