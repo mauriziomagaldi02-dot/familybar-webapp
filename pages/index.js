@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import Header from '../components/Header'
+import Layout from '../components/Layout'
 
 export default function Home() {
   const [email, setEmail] = useState('')
@@ -46,18 +46,15 @@ export default function Home() {
       <div style={pageStyle}>
         <div style={loginWrapStyle}>
           <div style={loginCardStyle}>
-            <div style={{ marginBottom: 28, textAlign: 'center' }}>
+            <div style={logoWrapStyle}>
               <img
                 src="/logo.png"
                 alt="logo"
-                style={{
-                  height: 70,
-                  objectFit: 'contain',
-                }}
+                style={logoLoginStyle}
               />
             </div>
 
-            <form onSubmit={handleLogin} style={{ display: 'grid', gap: 14 }}>
+            <form onSubmit={handleLogin} style={formStyle}>
               <input
                 type="email"
                 placeholder="Email"
@@ -87,25 +84,74 @@ export default function Home() {
   }
 
   return (
-    <div style={pageStyle}>
-      <div style={containerStyle}>
-        <Header onLogout={handleLogout} />
+    <Layout onLogout={handleLogout}>
+      {message && <p style={errorTextStyle}>{message}</p>}
 
-        {message && <p style={errorTextStyle}>{message}</p>}
+      <div style={menuSectionStyle}>
+        <MenuLink
+          href="/dashboard"
+          label="Dashboard"
+          icon="📊"
+          note="Sintesi mensile e semafori"
+        />
 
-        <div style={menuSectionStyle}>
-          <MenuLink href="/dashboard" label="Dashboard" icon="📊" note="Sintesi mensile e semafori" />
-          <MenuLink href="/analisi" label="Analisi avanzata" icon="📈" note="Pareto, grafici e confronto dati" />
-          <MenuLink href="/fatture" label="Fatture" icon="🧾" note="Gestione acquisti e imponibili" />
-          <MenuLink href="/ricavi" label="Ricavi" icon="💶" note="Inserimento ricavi per PV" />
-          <MenuLink href="/costi-personale" label="Costi personale" icon="👥" note="Costo lavoro e ore" />
-          <MenuLink href="/spese-manuali" label="Spese manuali" icon="📝" note="Costi extra e costi generali" />
-          <MenuLink href="/import-xml" label="Import XML" icon="📂" note="Importazione FatturaPA" />
-          <MenuLink href="/mappature" label="Mappature fornitori" icon="🧩" note="Regole automatiche di assegnazione" />
-          <MenuLink href="/fornitori" label="Fornitori" icon="🏷️" note="Anagrafica, P.IVA e codice fiscale" />
-        </div>
+        <MenuLink
+          href="/analisi"
+          label="Analisi avanzata"
+          icon="📈"
+          note="Pareto, grafici e confronto dati"
+        />
+
+        <MenuLink
+          href="/fatture"
+          label="Fatture"
+          icon="🧾"
+          note="Gestione acquisti e imponibili"
+        />
+
+        <MenuLink
+          href="/ricavi"
+          label="Ricavi"
+          icon="💶"
+          note="Inserimento ricavi per PV"
+        />
+
+        <MenuLink
+          href="/costi-personale"
+          label="Costi personale"
+          icon="👥"
+          note="Costo lavoro e ore"
+        />
+
+        <MenuLink
+          href="/spese-manuali"
+          label="Spese manuali"
+          icon="📝"
+          note="Costi extra e costi generali"
+        />
+
+        <MenuLink
+          href="/import-xml"
+          label="Import XML"
+          icon="📂"
+          note="Importazione FatturaPA"
+        />
+
+        <MenuLink
+          href="/mappature"
+          label="Mappature fornitori"
+          icon="🧩"
+          note="Regole automatiche di assegnazione"
+        />
+
+        <MenuLink
+          href="/fornitori"
+          label="Fornitori"
+          icon="🏷️"
+          note="Anagrafica, P.IVA e codice fiscale"
+        />
       </div>
-    </div>
+    </Layout>
   )
 }
 
@@ -131,12 +177,6 @@ const pageStyle = {
   fontFamily: 'Arial, sans-serif',
 }
 
-const containerStyle = {
-  maxWidth: 1240,
-  margin: '0 auto',
-  padding: '32px 24px 48px',
-}
-
 const loginWrapStyle = {
   minHeight: '100vh',
   display: 'flex',
@@ -153,6 +193,22 @@ const loginCardStyle = {
   borderRadius: 18,
   padding: 32,
   boxShadow: '0 10px 30px rgba(0,0,0,0.05)',
+}
+
+const logoWrapStyle = {
+  marginBottom: 28,
+  textAlign: 'center',
+}
+
+const logoLoginStyle = {
+  height: 70,
+  width: 'auto',
+  objectFit: 'contain',
+}
+
+const formStyle = {
+  display: 'grid',
+  gap: 14,
 }
 
 const menuSectionStyle = {
@@ -173,6 +229,7 @@ const menuCardStyle = {
   textDecoration: 'none',
   color: '#111827',
   boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
 }
 
 const menuTopRowStyle = {
@@ -219,6 +276,7 @@ const inputStyle = {
   borderRadius: 12,
   fontSize: 15,
   outline: 'none',
+  boxSizing: 'border-box',
 }
 
 const primaryButtonStyle = {
