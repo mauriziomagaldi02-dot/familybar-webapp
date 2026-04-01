@@ -140,6 +140,7 @@ export default function Home() {
   <Link href="/mappature">Mappature fornitori</Link>
   <Link href="/import-xml">Import XML</Link>
   <Link href="/fornitori">Fornitori</Link>
+  <Link href="/analisi">Analisi avanzata</Link>
 </div>
 
       {message && <p style={{ marginTop: 16 }}>{message}</p>}
