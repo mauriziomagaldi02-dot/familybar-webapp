@@ -4,7 +4,6 @@ import { supabase } from '../lib/supabaseClient'
 
 export default function ImportXml() {
   const [user, setUser] = useState(null)
-  const [files, setFiles] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [mappings, setMappings] = useState([])
   const [message, setMessage] = useState('')
@@ -75,7 +74,6 @@ export default function ImportXml() {
 
   async function handleFilesChange(e) {
     const selectedFiles = Array.from(e.target.files || [])
-    setFiles(selectedFiles)
     setMessage('')
 
     if (selectedFiles.length === 0) {
@@ -105,6 +103,7 @@ export default function ImportXml() {
           point_of_sale_id: mapping?.is_general ? null : mapping?.point_of_sale_id || null,
           category_id: mapping?.category_id || null,
           is_general: !!mapping?.is_general,
+          will_create_supplier: !matchedSupplier,
         })
       } catch (error) {
         parsedRows.push({
@@ -128,7 +127,11 @@ export default function ImportXml() {
 
     try {
       let inserted = 0
+      let createdSuppliers = 0
       let skipped = 0
+
+      let localSuppliers = [...suppliers]
+      let localMappings = [...mappings]
 
       for (const row of previewRows) {
         if (row.error) {
@@ -136,20 +139,43 @@ export default function ImportXml() {
           continue
         }
 
-        if (!row.supplier_id) {
+        let supplierId = row.supplier_id
+        let supplierName = row.supplier_name || ''
+
+        if (!supplierId && supplierName) {
+          const { data: newSupplier, error: supplierError } = await supabase
+            .from('suppliers')
+            .insert({ name: supplierName })
+            .select()
+            .single()
+
+          if (supplierError) {
+            skipped += 1
+            continue
+          }
+
+          supplierId = newSupplier.id
+          localSuppliers.push(newSupplier)
+          createdSuppliers += 1
+        }
+
+        if (!supplierId) {
           skipped += 1
           continue
         }
 
+        const mapping =
+          localMappings.find((m) => m.supplier_id === supplierId) || null
+
         const payload = {
-          supplier_id: row.supplier_id,
-          supplier_name: row.supplier_name || null,
+          supplier_id: supplierId,
+          supplier_name: supplierName || null,
           invoice_date: row.invoice_date || null,
           invoice_number: row.invoice_number || null,
           amount: row.amount ? Number(row.amount) : null,
-          point_of_sale_id: row.is_general ? null : row.point_of_sale_id || null,
-          category_id: row.category_id || null,
-          is_general: !!row.is_general,
+          point_of_sale_id: mapping?.is_general ? null : mapping?.point_of_sale_id || null,
+          category_id: mapping?.category_id || null,
+          is_general: !!mapping?.is_general,
           source_filename: row.source_filename || null,
         }
 
@@ -163,9 +189,12 @@ export default function ImportXml() {
         inserted += 1
       }
 
-      setMessage(`Import completato. Inserite: ${inserted}. Saltate: ${skipped}.`)
-      setFiles([])
+      setMessage(
+        `Import completato. Fatture inserite: ${inserted}. Nuovi fornitori creati: ${createdSuppliers}. Saltate: ${skipped}.`
+      )
+
       setPreviewRows([])
+      await loadReferenceData()
     } catch (error) {
       setMessage(error.message || 'Errore durante importazione')
     } finally {
@@ -243,7 +272,9 @@ export default function ImportXml() {
                     ? `Errore: ${row.error}`
                     : row.supplier_id
                     ? 'Pronto'
-                    : 'Fornitore non riconosciuto'}
+                    : row.will_create_supplier
+                    ? 'Nuovo fornitore: verrà creato'
+                    : 'Pronto'}
                 </td>
               </tr>
             ))}
