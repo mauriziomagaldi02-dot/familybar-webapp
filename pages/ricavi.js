@@ -33,10 +33,20 @@ export default function Ricavi() {
   }, [user])
 
   async function loadData() {
-    const [{ data: rev }, { data: pv }] = await Promise.all([
+    setMessage('')
+
+    const [
+      { data: rev, error: revError },
+      { data: pv, error: pvError }
+    ] = await Promise.all([
       supabase.from('revenues').select('*').order('date', { ascending: false }),
       supabase.from('points_of_sale').select('*').order('name'),
     ])
+
+    if (revError || pvError) {
+      setMessage(revError?.message || pvError?.message || 'Errore caricamento dati')
+      return
+    }
 
     setRows(rev || [])
     setPointsOfSale(pv || [])
@@ -53,11 +63,28 @@ export default function Ricavi() {
     }
 
     if (editingId) {
-      await supabase.from('revenues').update(payload).eq('id', editingId)
-      setMessage('Ricavo aggiornato')
+      const { error } = await supabase
+        .from('revenues')
+        .update(payload)
+        .eq('id', editingId)
+
+      if (error) {
+        setMessage(error.message)
+        return
+      }
+
+      setMessage('Ricavo aggiornato.')
     } else {
-      await supabase.from('revenues').insert(payload)
-      setMessage('Ricavo inserito')
+      const { error } = await supabase
+        .from('revenues')
+        .insert(payload)
+
+      if (error) {
+        setMessage(error.message)
+        return
+      }
+
+      setMessage('Ricavo inserito.')
     }
 
     resetForm()
@@ -71,12 +98,28 @@ export default function Ricavi() {
       amount: row.amount ?? '',
       point_of_sale_id: row.point_of_sale_id || '',
     })
+    setMessage('')
   }
 
   async function handleDelete(id) {
-    if (!confirm('Cancellare?')) return
-    await supabase.from('revenues').delete().eq('id', id)
-    if (editingId === id) resetForm()
+    const conferma = window.confirm('Vuoi davvero cancellare questo ricavo?')
+    if (!conferma) return
+
+    const { error } = await supabase
+      .from('revenues')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    if (editingId === id) {
+      resetForm()
+    }
+
+    setMessage('Ricavo cancellato.')
     loadData()
   }
 
@@ -85,18 +128,35 @@ export default function Ricavi() {
     setEditingId(null)
   }
 
-  if (!user) return <p>Devi accedere</p>
+  if (!user) {
+    return (
+      <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
+        <p>Devi accedere</p>
+        <Link href="/">Torna alla home</Link>
+      </div>
+    )
+  }
 
   return (
-    <div style={{ padding: 40 }}>
-      <h1>Ricavi</h1>
-      <Link href="/">Home</Link>
+    <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+        <h1 style={{ margin: 0 }}>Ricavi</h1>
+        <Link href="/">Home</Link>
+      </div>
 
-      <form onSubmit={handleSubmit} style={{ marginTop: 20, display: 'grid', gap: 10, maxWidth: 400 }}>
-        <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+      <form
+        onSubmit={handleSubmit}
+        style={{ marginTop: 20, display: 'grid', gap: 10, maxWidth: 400 }}
+      >
+        <input
+          type="date"
+          value={form.date}
+          onChange={(e) => setForm({ ...form, date: e.target.value })}
+        />
 
         <input
           type="number"
+          step="0.01"
           placeholder="Importo"
           value={form.amount}
           onChange={(e) => setForm({ ...form, amount: e.target.value })}
@@ -106,36 +166,77 @@ export default function Ricavi() {
           value={form.point_of_sale_id}
           onChange={(e) => setForm({ ...form, point_of_sale_id: e.target.value })}
         >
-          <option value="">PV</option>
+          <option value="">Seleziona PV</option>
           {pointsOfSale.map((pv) => (
-            <option key={pv.id} value={pv.id}>{pv.name}</option>
+            <option key={pv.id} value={pv.id}>
+              {pv.name}
+            </option>
           ))}
         </select>
 
-        <button>{editingId ? 'Aggiorna' : 'Salva'}</button>
-        {editingId && <button type="button" onClick={resetForm}>Annulla</button>}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="submit">{editingId ? 'Aggiorna' : 'Salva'}</button>
+          {editingId && (
+            <button type="button" onClick={resetForm}>
+              Annulla
+            </button>
+          )}
+        </div>
       </form>
 
-      <p>{message}</p>
+      {message && <p style={{ marginTop: 12 }}>{message}</p>}
 
-      <table style={{ marginTop: 20 }}>
-        <tbody>
-          {rows.map((r) => {
-            const pv = pointsOfSale.find((p) => p.id === r.point_of_sale_id)
-            return (
-              <tr key={r.id}>
-                <td>{r.date}</td>
-                <td>{r.amount}</td>
-                <td>{pv?.name}</td>
-                <td>
-                  <button onClick={() => handleEdit(r)}>Modifica</button>
-                  <button onClick={() => handleDelete(r.id)}>Cancella</button>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      <h2 style={{ marginTop: 30 }}>Elenco ricavi</h2>
+
+      {rows.length === 0 ? (
+        <p>Nessun ricavo presente.</p>
+      ) : (
+        <table style={{ marginTop: 10, borderCollapse: 'collapse', width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={th}>Data</th>
+              <th style={th}>Importo</th>
+              <th style={th}>PV</th>
+              <th style={th}>Azioni</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const pv = pointsOfSale.find((p) => p.id === row.point_of_sale_id)
+
+              return (
+                <tr key={row.id}>
+                  <td style={td}>{row.date || ''}</td>
+                  <td style={td}>{row.amount || ''}</td>
+                  <td style={td}>{pv?.name || ''}</td>
+                  <td style={td}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="button" onClick={() => handleEdit(row)}>
+                        Modifica
+                      </button>
+                      <button type="button" onClick={() => handleDelete(row.id)}>
+                        Cancella
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
     </div>
   )
+}
+
+const th = {
+  border: '1px solid #ccc',
+  padding: 8,
+  textAlign: 'left',
+  background: '#f5f5f5',
+}
+
+const td = {
+  border: '1px solid #ccc',
+  padding: 8,
 }
