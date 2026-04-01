@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
 
@@ -7,6 +7,8 @@ const initialForm = {
   invoice_date: '',
   amount: '',
   point_of_sale_id: '',
+  category_id: '',
+  is_general: false,
 }
 
 export default function Fatture() {
@@ -15,6 +17,7 @@ export default function Fatture() {
   const [suppliers, setSuppliers] = useState([])
   const [pointsOfSale, setPointsOfSale] = useState([])
   const [categories, setCategories] = useState([])
+  const [mappings, setMappings] = useState([])
   const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
   const [editingId, setEditingId] = useState(null)
@@ -38,6 +41,14 @@ export default function Fatture() {
     if (user) loadData()
   }, [user, selectedMonth])
 
+  const mappingsBySupplier = useMemo(() => {
+    const map = new Map()
+    for (const row of mappings) {
+      if (row.supplier_id) map.set(row.supplier_id, row)
+    }
+    return map
+  }, [mappings])
+
   async function loadData() {
     setMessage('')
 
@@ -60,19 +71,22 @@ export default function Fatture() {
       { data: suppliersData, error: suppliersError },
       { data: pvData, error: pvError },
       { data: categoriesData, error: categoriesError },
+      { data: mappingsData, error: mappingsError },
     ] = await Promise.all([
       invoicesQuery,
       supabase.from('suppliers').select('*').order('name'),
       supabase.from('points_of_sale').select('*').order('name'),
       supabase.from('categories').select('*').order('name'),
+      supabase.from('supplier_mappings').select('*'),
     ])
 
-    if (invoicesError || suppliersError || pvError || categoriesError) {
+    if (invoicesError || suppliersError || pvError || categoriesError || mappingsError) {
       setMessage(
         invoicesError?.message ||
           suppliersError?.message ||
           pvError?.message ||
           categoriesError?.message ||
+          mappingsError?.message ||
           'Errore caricamento dati'
       )
       return
@@ -82,6 +96,26 @@ export default function Fatture() {
     setSuppliers(suppliersData || [])
     setPointsOfSale(pvData || [])
     setCategories(categoriesData || [])
+    setMappings(mappingsData || [])
+  }
+
+  function applySupplierMapping(supplierId, currentForm = form) {
+    const mapping = mappingsBySupplier.get(supplierId)
+
+    if (!mapping) {
+      return {
+        ...currentForm,
+        supplier_id: supplierId,
+      }
+    }
+
+    return {
+      ...currentForm,
+      supplier_id: supplierId,
+      point_of_sale_id: mapping.is_general ? '' : mapping.point_of_sale_id || '',
+      category_id: mapping.category_id || '',
+      is_general: !!mapping.is_general,
+    }
   }
 
   async function handleSubmit(e) {
@@ -92,7 +126,9 @@ export default function Fatture() {
       supplier_id: form.supplier_id || null,
       invoice_date: form.invoice_date || null,
       amount: form.amount ? Number(form.amount) : null,
-      point_of_sale_id: form.point_of_sale_id || null,
+      point_of_sale_id: form.is_general ? null : form.point_of_sale_id || null,
+      category_id: form.category_id || null,
+      is_general: !!form.is_general,
     }
 
     if (editingId) {
@@ -131,6 +167,8 @@ export default function Fatture() {
       invoice_date: row.invoice_date || '',
       amount: row.amount ?? '',
       point_of_sale_id: row.point_of_sale_id || '',
+      category_id: row.category_id || '',
+      is_general: !!row.is_general,
     })
     setMessage('')
   }
@@ -205,11 +243,11 @@ export default function Fatture() {
 
       <form
         onSubmit={handleSubmit}
-        style={{ marginTop: 24, display: 'grid', gap: 12, maxWidth: 500 }}
+        style={{ marginTop: 24, display: 'grid', gap: 12, maxWidth: 560 }}
       >
         <select
           value={form.supplier_id}
-          onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}
+          onChange={(e) => setForm(applySupplierMapping(e.target.value))}
         >
           <option value="">Seleziona fornitore</option>
           {suppliers.map((s) => (
@@ -233,14 +271,43 @@ export default function Fatture() {
           onChange={(e) => setForm({ ...form, amount: e.target.value })}
         />
 
+        <label>
+          <input
+            type="checkbox"
+            checked={form.is_general}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                is_general: e.target.checked,
+                point_of_sale_id: e.target.checked ? '' : form.point_of_sale_id,
+              })
+            }
+          />
+          {' '}Costo generale
+        </label>
+
+        {!form.is_general && (
+          <select
+            value={form.point_of_sale_id}
+            onChange={(e) => setForm({ ...form, point_of_sale_id: e.target.value })}
+          >
+            <option value="">Seleziona punto vendita</option>
+            {pointsOfSale.map((pv) => (
+              <option key={pv.id} value={pv.id}>
+                {pv.name}
+              </option>
+            ))}
+          </select>
+        )}
+
         <select
-          value={form.point_of_sale_id}
-          onChange={(e) => setForm({ ...form, point_of_sale_id: e.target.value })}
+          value={form.category_id}
+          onChange={(e) => setForm({ ...form, category_id: e.target.value })}
         >
-          <option value="">Seleziona punto vendita</option>
-          {pointsOfSale.map((pv) => (
-            <option key={pv.id} value={pv.id}>
-              {pv.name}
+          <option value="">Seleziona categoria</option>
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.name}
             </option>
           ))}
         </select>
