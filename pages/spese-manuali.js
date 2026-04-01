@@ -18,6 +18,7 @@ export default function SpeseManuali() {
   const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
   const [editingId, setEditingId] = useState(null)
+  const [selectedMonth, setSelectedMonth] = useState('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -35,14 +36,28 @@ export default function SpeseManuali() {
 
   useEffect(() => {
     if (user) loadData()
-  }, [user])
+  }, [user, selectedMonth])
 
   async function loadData() {
     setMessage('')
 
+    let costsQuery = supabase
+      .from('manual_costs')
+      .select('*')
+      .order('cost_date', { ascending: false })
+
+    if (selectedMonth) {
+      const startDate = `${selectedMonth}-01`
+      const endDate = `${getNextMonth(selectedMonth)}-01`
+
+      costsQuery = costsQuery
+        .gte('cost_date', startDate)
+        .lt('cost_date', endDate)
+    }
+
     const [{ data: costs, error: costsError }, { data: pvData, error: pvError }] =
       await Promise.all([
-        supabase.from('manual_costs').select('*').order('cost_date', { ascending: false }),
+        costsQuery,
         supabase.from('points_of_sale').select('*').order('name'),
       ])
 
@@ -110,7 +125,6 @@ export default function SpeseManuali() {
 
   async function handleDelete(id) {
     const conferma = window.confirm('Vuoi davvero cancellare questa spesa?')
-
     if (!conferma) return
 
     const { error } = await supabase.from('manual_costs').delete().eq('id', id)
@@ -120,9 +134,7 @@ export default function SpeseManuali() {
       return
     }
 
-    if (editingId === id) {
-      resetForm()
-    }
+    if (editingId === id) resetForm()
 
     setMessage('Spesa manuale cancellata.')
     loadData()
@@ -147,6 +159,18 @@ export default function SpeseManuali() {
       <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
         <h1 style={{ margin: 0 }}>Spese manuali</h1>
         <Link href="/">Home</Link>
+      </div>
+
+      <div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}>
+        <label>Mese:</label>
+        <input
+          type="month"
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+        />
+        <button type="button" onClick={() => setSelectedMonth('')}>
+          Tutti
+        </button>
       </div>
 
       <form
@@ -211,10 +235,7 @@ export default function SpeseManuali() {
         />
 
         <div style={{ display: 'flex', gap: 10 }}>
-          <button type="submit">
-            {editingId ? 'Aggiorna' : 'Salva'}
-          </button>
-
+          <button type="submit">{editingId ? 'Aggiorna' : 'Salva'}</button>
           {editingId && (
             <button type="button" onClick={resetForm}>
               Annulla modifica
@@ -272,6 +293,19 @@ export default function SpeseManuali() {
       )}
     </div>
   )
+}
+
+function getNextMonth(month) {
+  const [year, mon] = month.split('-').map(Number)
+  let nextYear = year
+  let nextMonth = mon + 1
+
+  if (nextMonth === 13) {
+    nextMonth = 1
+    nextYear = year + 1
+  }
+
+  return `${nextYear}-${String(nextMonth).padStart(2, '0')}`
 }
 
 const th = {
