@@ -257,7 +257,6 @@ export default function Dashboard() {
   if (!user) {
     return (
 return (
-<h1 style={{ color: 'red' }}>TEST</h1>
     <div style={{ background: '#f6f7f9', minHeight: '100vh' }}>
 
     <div style={{
