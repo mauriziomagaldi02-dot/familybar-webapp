@@ -2,18 +2,21 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
 
+const initialForm = {
+  supplier_id: '',
+  invoice_date: '',
+  amount: '',
+  point_of_sale_id: '',
+}
+
 export default function Fatture() {
   const [user, setUser] = useState(null)
-  const [invoices, setInvoices] = useState([])
+  const [rows, setRows] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [pointsOfSale, setPointsOfSale] = useState([])
-  const [form, setForm] = useState({
-    supplier_id: '',
-    invoice_date: '',
-    amount: '',
-    point_of_sale_id: '',
-  })
+  const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
+  const [editingId, setEditingId] = useState(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -30,27 +33,33 @@ export default function Fatture() {
   }, [])
 
   useEffect(() => {
-    if (user) {
-      loadData()
-    }
+    if (user) loadData()
   }, [user])
 
   async function loadData() {
     setMessage('')
 
-    const [{ data: invoicesData, error: invoicesError }, { data: suppliersData }, { data: pvData }] =
-      await Promise.all([
-        supabase.from('invoices').select('*').order('invoice_date', { ascending: false }),
-        supabase.from('suppliers').select('*').order('name'),
-        supabase.from('points_of_sale').select('*').order('name'),
-      ])
+    const [
+      { data: invoicesData, error: invoicesError },
+      { data: suppliersData, error: suppliersError },
+      { data: pvData, error: pvError },
+    ] = await Promise.all([
+      supabase.from('invoices').select('*').order('invoice_date', { ascending: false }),
+      supabase.from('suppliers').select('*').order('name'),
+      supabase.from('points_of_sale').select('*').order('name'),
+    ])
 
-    if (invoicesError) {
-      setMessage(invoicesError.message)
+    if (invoicesError || suppliersError || pvError) {
+      setMessage(
+        invoicesError?.message ||
+        suppliersError?.message ||
+        pvError?.message ||
+        'Errore caricamento dati'
+      )
       return
     }
 
-    setInvoices(invoicesData || [])
+    setRows(invoicesData || [])
     setSuppliers(suppliersData || [])
     setPointsOfSale(pvData || [])
   }
@@ -66,22 +75,71 @@ export default function Fatture() {
       point_of_sale_id: form.point_of_sale_id || null,
     }
 
-    const { error } = await supabase.from('invoices').insert(payload)
+    if (editingId) {
+      const { error } = await supabase
+        .from('invoices')
+        .update(payload)
+        .eq('id', editingId)
+
+      if (error) {
+        setMessage(error.message)
+        return
+      }
+
+      setMessage('Fattura aggiornata.')
+    } else {
+      const { error } = await supabase
+        .from('invoices')
+        .insert(payload)
+
+      if (error) {
+        setMessage(error.message)
+        return
+      }
+
+      setMessage('Fattura inserita.')
+    }
+
+    resetForm()
+    loadData()
+  }
+
+  function handleEdit(row) {
+    setEditingId(row.id)
+    setForm({
+      supplier_id: row.supplier_id || '',
+      invoice_date: row.invoice_date || '',
+      amount: row.amount ?? '',
+      point_of_sale_id: row.point_of_sale_id || '',
+    })
+    setMessage('')
+  }
+
+  async function handleDelete(id) {
+    const conferma = window.confirm('Vuoi davvero cancellare questa fattura?')
+    if (!conferma) return
+
+    const { error } = await supabase
+      .from('invoices')
+      .delete()
+      .eq('id', id)
 
     if (error) {
       setMessage(error.message)
       return
     }
 
-    setForm({
-      supplier_id: '',
-      invoice_date: '',
-      amount: '',
-      point_of_sale_id: '',
-    })
+    if (editingId === id) {
+      resetForm()
+    }
 
-    setMessage('Fattura inserita.')
+    setMessage('Fattura cancellata.')
     loadData()
+  }
+
+  function resetForm() {
+    setForm(initialForm)
+    setEditingId(null)
   }
 
   if (!user) {
@@ -101,7 +159,10 @@ export default function Fatture() {
         <Link href="/">Home</Link>
       </div>
 
-      <form onSubmit={handleSubmit} style={{ marginTop: 24, display: 'grid', gap: 12, maxWidth: 500 }}>
+      <form
+        onSubmit={handleSubmit}
+        style={{ marginTop: 24, display: 'grid', gap: 12, maxWidth: 500 }}
+      >
         <select
           value={form.supplier_id}
           onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}
@@ -140,14 +201,22 @@ export default function Fatture() {
           ))}
         </select>
 
-        <button type="submit">Salva fattura</button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="submit">{editingId ? 'Aggiorna' : 'Salva fattura'}</button>
+
+          {editingId && (
+            <button type="button" onClick={resetForm}>
+              Annulla
+            </button>
+          )}
+        </div>
       </form>
 
       {message && <p style={{ marginTop: 16 }}>{message}</p>}
 
       <h2 style={{ marginTop: 32 }}>Elenco fatture</h2>
 
-      {invoices.length === 0 ? (
+      {rows.length === 0 ? (
         <p>Nessuna fattura presente.</p>
       ) : (
         <table style={{ borderCollapse: 'collapse', width: '100%', marginTop: 12 }}>
@@ -157,19 +226,30 @@ export default function Fatture() {
               <th style={th}>Importo</th>
               <th style={th}>Fornitore</th>
               <th style={th}>PV</th>
+              <th style={th}>Azioni</th>
             </tr>
           </thead>
           <tbody>
-            {invoices.map((inv) => {
-              const supplier = suppliers.find((s) => s.id === inv.supplier_id)
-              const pv = pointsOfSale.find((p) => p.id === inv.point_of_sale_id)
+            {rows.map((row) => {
+              const supplier = suppliers.find((s) => s.id === row.supplier_id)
+              const pv = pointsOfSale.find((p) => p.id === row.point_of_sale_id)
 
               return (
-                <tr key={inv.id}>
-                  <td style={td}>{inv.invoice_date || ''}</td>
-                  <td style={td}>{inv.amount ?? ''}</td>
+                <tr key={row.id}>
+                  <td style={td}>{row.invoice_date || ''}</td>
+                  <td style={td}>{row.amount || ''}</td>
                   <td style={td}>{supplier?.name || ''}</td>
                   <td style={td}>{pv?.name || ''}</td>
+                  <td style={td}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="button" onClick={() => handleEdit(row)}>
+                        Modifica
+                      </button>
+                      <button type="button" onClick={() => handleDelete(row.id)}>
+                        Cancella
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               )
             })}
