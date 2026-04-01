@@ -14,6 +14,7 @@ export default function Fatture() {
   const [rows, setRows] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [pointsOfSale, setPointsOfSale] = useState([])
+  const [categories, setCategories] = useState([])
   const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
   const [editingId, setEditingId] = useState(null)
@@ -58,17 +59,20 @@ export default function Fatture() {
       { data: invoicesData, error: invoicesError },
       { data: suppliersData, error: suppliersError },
       { data: pvData, error: pvError },
+      { data: categoriesData, error: categoriesError },
     ] = await Promise.all([
       invoicesQuery,
       supabase.from('suppliers').select('*').order('name'),
       supabase.from('points_of_sale').select('*').order('name'),
+      supabase.from('categories').select('*').order('name'),
     ])
 
-    if (invoicesError || suppliersError || pvError) {
+    if (invoicesError || suppliersError || pvError || categoriesError) {
       setMessage(
         invoicesError?.message ||
           suppliersError?.message ||
           pvError?.message ||
+          categoriesError?.message ||
           'Errore caricamento dati'
       )
       return
@@ -77,6 +81,7 @@ export default function Fatture() {
     setRows(invoicesData || [])
     setSuppliers(suppliersData || [])
     setPointsOfSale(pvData || [])
+    setCategories(categoriesData || [])
   }
 
   async function handleSubmit(e) {
@@ -155,6 +160,18 @@ export default function Fatture() {
   function resetForm() {
     setForm(initialForm)
     setEditingId(null)
+  }
+
+  function getSupplierName(id) {
+    return suppliers.find((s) => s.id === id)?.name || ''
+  }
+
+  function getPvName(id) {
+    return pointsOfSale.find((p) => p.id === id)?.name || ''
+  }
+
+  function getCategoryName(id) {
+    return categories.find((c) => c.id === id)?.name || ''
   }
 
   if (!user) {
@@ -252,33 +269,32 @@ export default function Fatture() {
               <th style={th}>Importo</th>
               <th style={th}>Fornitore</th>
               <th style={th}>PV</th>
+              <th style={th}>Categoria</th>
+              <th style={th}>Generale</th>
               <th style={th}>Azioni</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
-              const supplier = suppliers.find((s) => s.id === row.supplier_id)
-              const pv = pointsOfSale.find((p) => p.id === row.point_of_sale_id)
-
-              return (
-                <tr key={row.id}>
-                  <td style={td}>{row.invoice_date || ''}</td>
-                  <td style={td}>{row.amount || ''}</td>
-                  <td style={td}>{supplier?.name || ''}</td>
-                  <td style={td}>{pv?.name || ''}</td>
-                  <td style={td}>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="button" onClick={() => handleEdit(row)}>
-                        Modifica
-                      </button>
-                      <button type="button" onClick={() => handleDelete(row.id)}>
-                        Cancella
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
+            {rows.map((row) => (
+              <tr key={row.id}>
+                <td style={td}>{row.invoice_date || ''}</td>
+                <td style={td}>{row.amount || ''}</td>
+                <td style={td}>{getSupplierName(row.supplier_id)}</td>
+                <td style={td}>{row.is_general ? '' : getPvName(row.point_of_sale_id)}</td>
+                <td style={td}>{getCategoryName(row.category_id)}</td>
+                <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
+                <td style={td}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button type="button" onClick={() => handleEdit(row)}>
+                      Modifica
+                    </button>
+                    <button type="button" onClick={() => handleDelete(row.id)}>
+                      Cancella
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}
