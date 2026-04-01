@@ -134,6 +134,9 @@ export default function Home() {
       <div style={{ marginTop: 24 }}>
         <Link href="/fatture">Vai a Fatture</Link>
       </div>
+<div style={{ marginTop: 12 }}>
+  <Link href="/ricavi">Vai a Ricavi</Link>
+</div>
 
       {message && <p style={{ marginTop: 16 }}>{message}</p>}
     </div>
