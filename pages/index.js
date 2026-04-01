@@ -59,14 +59,22 @@ export default function Home() {
     await supabase.auth.signOut()
   }
 
+  // 🔴 LOGIN (SOLO LOGO)
   if (!user) {
     return (
       <div style={pageStyle}>
         <div style={loginWrapStyle}>
           <div style={loginCardStyle}>
-            <div style={{ marginBottom: 28 }}>
-              <h1 style={titleStyle}>Familybar</h1>
-              <p style={subtitleStyle}>Accesso gestionale</p>
+
+            <div style={{ marginBottom: 28, textAlign: 'center' }}>
+              <img
+                src="/logo.png"
+                alt="logo"
+                style={{
+                  height: 70,
+                  objectFit: 'contain'
+                }}
+              />
             </div>
 
             <form onSubmit={handleLogin} style={{ display: 'grid', gap: 14 }}>
@@ -77,6 +85,7 @@ export default function Home() {
                 onChange={(e) => setEmail(e.target.value)}
                 style={inputStyle}
               />
+
               <input
                 type="password"
                 placeholder="Password"
@@ -97,13 +106,30 @@ export default function Home() {
     )
   }
 
+  // 🔵 HOME
   return (
     <div style={pageStyle}>
       <div style={containerStyle}>
+
         <div style={topBarStyle}>
-          <div>
-            <h1 style={titleStyle}>Familybar Web App</h1>
-            <p style={subtitleStyle}>Accesso effettuato come: {user.email}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+
+            <img
+              src="/logo.png"
+              alt="logo"
+              style={{
+                height: 40,
+                objectFit: 'contain'
+              }}
+            />
+
+            <div>
+              <h1 style={titleStyle}>Familybar</h1>
+              <p style={subtitleStyle}>
+                Accesso effettuato come: {user.email}
+              </p>
+            </div>
+
           </div>
 
           <button onClick={handleLogout} style={logoutButtonStyle}>
@@ -114,6 +140,7 @@ export default function Home() {
         {message && <p style={errorTextStyle}>{message}</p>}
 
         <div style={gridStyle}>
+
           <div style={cardStyle}>
             <h2 style={sectionTitleStyle}>Punti vendita</h2>
 
@@ -145,6 +172,7 @@ export default function Home() {
               <MenuLink href="/analisi" label="Analisi avanzata" />
             </div>
           </div>
+
         </div>
       </div>
     </div>
@@ -159,6 +187,8 @@ function MenuLink({ href, label }) {
     </Link>
   )
 }
+
+/* STILI */
 
 const pageStyle = {
   minHeight: '100vh',
@@ -221,15 +251,14 @@ const linksGridStyle = {
 
 const titleStyle = {
   margin: 0,
-  fontSize: 32,
-  lineHeight: 1.1,
+  fontSize: 28,
   color: '#111827',
 }
 
 const subtitleStyle = {
-  margin: '8px 0 0 0',
+  margin: '6px 0 0 0',
   color: '#6b7280',
-  fontSize: 15,
+  fontSize: 14,
 }
 
 const sectionTitleStyle = {
@@ -243,47 +272,32 @@ const inputStyle = {
   padding: '12px 14px',
   border: '1px solid #d1d5db',
   borderRadius: 12,
-  fontSize: 15,
-  outline: 'none',
-  background: '#fff',
 }
 
 const primaryButtonStyle = {
-  padding: '12px 16px',
+  padding: '12px',
   border: 'none',
   borderRadius: 12,
   background: '#111827',
-  color: '#ffffff',
-  fontSize: 15,
-  fontWeight: 600,
+  color: '#fff',
   cursor: 'pointer',
 }
 
 const logoutButtonStyle = {
-  padding: '12px 16px',
+  padding: '10px 14px',
   border: '1px solid #d1d5db',
   borderRadius: 12,
-  background: '#ffffff',
-  color: '#111827',
-  fontSize: 14,
-  fontWeight: 600,
+  background: '#fff',
   cursor: 'pointer',
 }
 
 const errorTextStyle = {
   marginTop: 16,
   color: '#b91c1c',
-  background: '#fef2f2',
-  border: '1px solid #fecaca',
-  borderRadius: 12,
-  padding: '10px 12px',
-  fontSize: 14,
 }
 
 const emptyTextStyle = {
-  margin: 0,
   color: '#6b7280',
-  fontSize: 15,
 }
 
 const pvListStyle = {
@@ -295,31 +309,21 @@ const pvListStyle = {
 }
 
 const pvItemStyle = {
-  padding: '12px 14px',
+  padding: '10px',
   border: '1px solid #e5e7eb',
-  borderRadius: 12,
-  background: '#f9fafb',
-  color: '#111827',
-  fontSize: 15,
+  borderRadius: 10,
 }
 
 const menuLinkStyle = {
   display: 'flex',
-  alignItems: 'center',
   justifyContent: 'space-between',
-  gap: 12,
-  padding: '14px 16px',
+  padding: '12px',
   border: '1px solid #e5e7eb',
-  borderRadius: 14,
-  background: '#ffffff',
-  color: '#111827',
+  borderRadius: 10,
   textDecoration: 'none',
-  fontSize: 15,
-  fontWeight: 600,
-  transition: 'all 0.15s ease',
+  color: '#111827',
 }
 
 const menuArrowStyle = {
   color: '#6b7280',
-  fontSize: 16,
 }
