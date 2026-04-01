@@ -15,6 +15,7 @@ export default function Ricavi() {
   const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
   const [editingId, setEditingId] = useState(null)
+  const [selectedMonth, setSelectedMonth] = useState('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user || null))
@@ -30,18 +31,30 @@ export default function Ricavi() {
 
   useEffect(() => {
     if (user) loadData()
-  }, [user])
+  }, [user, selectedMonth])
 
   async function loadData() {
     setMessage('')
 
-    const [
-      { data: rev, error: revError },
-      { data: pv, error: pvError }
-    ] = await Promise.all([
-      supabase.from('revenues').select('*').order('date', { ascending: false }),
-      supabase.from('points_of_sale').select('*').order('name'),
-    ])
+    let revenuesQuery = supabase
+      .from('revenues')
+      .select('*')
+      .order('date', { ascending: false })
+
+    if (selectedMonth) {
+      const startDate = `${selectedMonth}-01`
+      const endDate = `${getNextMonth(selectedMonth)}-01`
+
+      revenuesQuery = revenuesQuery
+        .gte('date', startDate)
+        .lt('date', endDate)
+    }
+
+    const [{ data: rev, error: revError }, { data: pv, error: pvError }] =
+      await Promise.all([
+        revenuesQuery,
+        supabase.from('points_of_sale').select('*').order('name'),
+      ])
 
     if (revError || pvError) {
       setMessage(revError?.message || pvError?.message || 'Errore caricamento dati')
@@ -75,9 +88,7 @@ export default function Ricavi() {
 
       setMessage('Ricavo aggiornato.')
     } else {
-      const { error } = await supabase
-        .from('revenues')
-        .insert(payload)
+      const { error } = await supabase.from('revenues').insert(payload)
 
       if (error) {
         setMessage(error.message)
@@ -105,19 +116,14 @@ export default function Ricavi() {
     const conferma = window.confirm('Vuoi davvero cancellare questo ricavo?')
     if (!conferma) return
 
-    const { error } = await supabase
-      .from('revenues')
-      .delete()
-      .eq('id', id)
+    const { error } = await supabase.from('revenues').delete().eq('id', id)
 
     if (error) {
       setMessage(error.message)
       return
     }
 
-    if (editingId === id) {
-      resetForm()
-    }
+    if (editingId === id) resetForm()
 
     setMessage('Ricavo cancellato.')
     loadData()
@@ -142,6 +148,18 @@ export default function Ricavi() {
       <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
         <h1 style={{ margin: 0 }}>Ricavi</h1>
         <Link href="/">Home</Link>
+      </div>
+
+      <div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}>
+        <label>Mese:</label>
+        <input
+          type="month"
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+        />
+        <button type="button" onClick={() => setSelectedMonth('')}>
+          Tutti
+        </button>
       </div>
 
       <form
@@ -227,6 +245,19 @@ export default function Ricavi() {
       )}
     </div>
   )
+}
+
+function getNextMonth(month) {
+  const [year, mon] = month.split('-').map(Number)
+  let nextYear = year
+  let nextMonth = mon + 1
+
+  if (nextMonth === 13) {
+    nextMonth = 1
+    nextYear = year + 1
+  }
+
+  return `${nextYear}-${String(nextMonth).padStart(2, '0')}`
 }
 
 const th = {
