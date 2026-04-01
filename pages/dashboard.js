@@ -92,7 +92,7 @@ export default function Dashboard() {
     )
 
     const filteredPvData = (pointsOfSale || []).filter((pv) =>
-      selectedPv ? pv.id === selectedPv : true
+      selectedPv ? String(pv.id) === String(selectedPv) : true
     )
 
     const totalRicavi = filteredRevenues.reduce(
@@ -104,23 +104,23 @@ export default function Dashboard() {
 
     const result = filteredPvData.map((pv) => {
       const ricavi = filteredRevenues
-        .filter((r) => r.point_of_sale_id === pv.id)
+        .filter((r) => String(r.point_of_sale_id) === String(pv.id))
         .reduce((sum, r) => sum + Number(r.amount || 0), 0)
 
       const costiFattureImponibile = filteredInvoices
-        .filter((i) => i.point_of_sale_id === pv.id)
+        .filter((i) => String(i.point_of_sale_id) === String(pv.id))
         .reduce((sum, i) => sum + Number(i.amount || 0), 0)
 
       const costoPersonale = filteredStaff
-        .filter((s) => s.point_of_sale_id === pv.id)
+        .filter((s) => String(s.point_of_sale_id) === String(pv.id))
         .reduce((sum, s) => sum + Number(s.amount || 0), 0)
 
       const ore = filteredStaff
-        .filter((s) => s.point_of_sale_id === pv.id)
+        .filter((s) => String(s.point_of_sale_id) === String(pv.id))
         .reduce((sum, s) => sum + Number(s.worked_hours || 0), 0)
 
       const speseManualiDirette = filteredManualCosts
-        .filter((c) => !c.is_general && c.point_of_sale_id === pv.id)
+        .filter((c) => !c.is_general && String(c.point_of_sale_id) === String(pv.id))
         .reduce((sum, c) => sum + Number(c.amount || 0), 0)
 
       const quotaGenerali = generalManualCosts.reduce((sum, c) => {
@@ -190,89 +190,24 @@ export default function Dashboard() {
     const monthKeys = getLastMonths(selectedMonth, trendMonths)
 
     return monthKeys.map((monthKey, index) => {
-      const revenuesInMonth = (revenues || []).filter(
-        (r) =>
-          isInSelectedMonth(r.date, monthKey) &&
-          (selectedPv ? r.point_of_sale_id === selectedPv : true)
-      )
+      const current = calculateMonthSnapshot({
+        monthKey,
+        selectedPv,
+        revenues,
+        invoices,
+        staffCosts,
+        manualCosts,
+        pointsOfSale,
+      })
 
-      const invoicesInMonth = (invoices || []).filter(
-        (i) =>
-          isInSelectedMonth(i.invoice_date, monthKey) &&
-          (selectedPv ? i.point_of_sale_id === selectedPv : true)
-      )
-
-      const staffInMonth = (staffCosts || []).filter(
-        (s) =>
-          isInSelectedMonth(s.period_month, monthKey) &&
-          (selectedPv ? s.point_of_sale_id === selectedPv : true)
-      )
-
-      const manualCostsInMonth = (manualCosts || []).filter((c) =>
-        isInSelectedMonth(c.cost_date, monthKey)
-      )
-
-      const filteredPvData = (pointsOfSale || []).filter((pv) =>
-        selectedPv ? pv.id === selectedPv : true
-      )
-
-      const totalRicaviMese = (revenues || [])
-        .filter((r) => isInSelectedMonth(r.date, monthKey))
-        .reduce((sum, r) => sum + Number(r.amount || 0), 0)
-
-      const ricavi = revenuesInMonth.reduce((sum, r) => sum + Number(r.amount || 0), 0)
-
-      const costiFattureImponibile = invoicesInMonth.reduce(
-        (sum, i) => sum + Number(i.amount || 0),
-        0
-      )
-
-      const costoPersonale = staffInMonth.reduce(
-        (sum, s) => sum + Number(s.amount || 0),
-        0
-      )
-
-      const ore = staffInMonth.reduce(
-        (sum, s) => sum + Number(s.worked_hours || 0),
-        0
-      )
-
-      const speseManualiDirette = manualCostsInMonth
-        .filter((c) => !c.is_general && (selectedPv ? c.point_of_sale_id === selectedPv : true))
-        .reduce((sum, c) => sum + Number(c.amount || 0), 0)
-
-      const generalManualCosts = manualCostsInMonth.filter((c) => c.is_general === true)
-
-      const quotaGenerali = generalManualCosts.reduce((sum, c) => {
-        const amount = Number(c.amount || 0)
-
-        if (selectedPv) {
-          if (totalRicaviMese > 0) {
-            return sum + amount * (ricavi / totalRicaviMese)
-          }
-
-          const numeroPv = filteredPvData.length || 1
-          return sum + amount / numeroPv
-        }
-
-        return sum + amount
-      }, 0)
-
-      const costiTotali =
-        costiFattureImponibile + costoPersonale + speseManualiDirette + quotaGenerali
-
-      const margine = ricavi - costiTotali
-      const marginePerc = ricavi > 0 ? (margine / ricavi) * 100 : 0
-      const produttivitaOraria = ore > 0 ? ricavi / ore : 0
-
-      const prev = index > 0 ? monthKeys[index - 1] : null
+      const prevMonthKey = index > 0 ? monthKeys[index - 1] : null
 
       let trendRicaviPerc = null
       let trendMarginePerc = null
 
-      if (prev) {
-        const prevData = calculateMonthSnapshot({
-          monthKey: prev,
+      if (prevMonthKey) {
+        const prev = calculateMonthSnapshot({
+          monthKey: prevMonthKey,
           selectedPv,
           revenues,
           invoices,
@@ -282,33 +217,42 @@ export default function Dashboard() {
         })
 
         trendRicaviPerc =
-          prevData.ricavi !== 0
-            ? ((ricavi - prevData.ricavi) / prevData.ricavi) * 100
+          prev.ricavi !== 0
+            ? ((current.ricavi - prev.ricavi) / prev.ricavi) * 100
             : null
 
         trendMarginePerc =
-          prevData.margine !== 0
-            ? ((margine - prevData.margine) / prevData.margine) * 100
+          prev.margine !== 0
+            ? ((current.margine - prev.margine) / prev.margine) * 100
             : null
       }
 
       return {
         monthKey,
-        ricavi,
-        costiFattureImponibile,
-        costoPersonale,
-        speseManualiDirette,
-        quotaGenerali,
-        costiTotali,
-        margine,
-        marginePerc,
-        ore,
-        produttivitaOraria,
+        ...current,
         trendRicaviPerc,
         trendMarginePerc,
       }
     })
-  }, [revenues, invoices, staffCosts, manualCosts, pointsOfSale, selectedMonth, selectedPv, trendMonths])
+  }, [
+    revenues,
+    invoices,
+    staffCosts,
+    manualCosts,
+    pointsOfSale,
+    selectedMonth,
+    selectedPv,
+    trendMonths,
+  ])
+
+  const trendChartData = useMemo(() => {
+    return trendRows.map((r) => ({
+      mese: formatMonthLabel(r.monthKey),
+      ricavi: Number(r.ricavi || 0),
+      costi: Number(r.costiTotali || 0),
+      margine: Number(r.margine || 0),
+    }))
+  }, [trendRows])
 
   if (!user) {
     return (
@@ -472,6 +416,8 @@ export default function Dashboard() {
       <div style={{ marginTop: 32 }}>
         <h2 style={{ marginBottom: 12 }}>Trend mensile</h2>
 
+        <TrendLineChart data={trendChartData} />
+
         <table style={table}>
           <thead>
             <tr>
@@ -523,6 +469,157 @@ export default function Dashboard() {
   )
 }
 
+function TrendLineChart({ data, width = 1000, height = 320 }) {
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ padding: 16, border: '1px solid #ccc', background: '#fff', marginBottom: 24 }}>
+        Nessun dato disponibile
+      </div>
+    )
+  }
+
+  const padding = { top: 20, right: 20, bottom: 50, left: 90 }
+  const innerWidth = width - padding.left - padding.right
+  const innerHeight = height - padding.top - padding.bottom
+
+  const values = data.flatMap((d) => [
+    Number(d.ricavi || 0),
+    Number(d.costi || 0),
+    Number(d.margine || 0),
+  ])
+
+  const minValue = Math.min(0, ...values)
+  const maxValue = Math.max(0, ...values)
+  const range = maxValue - minValue || 1
+
+  const getX = (index) => {
+    if (data.length === 1) return padding.left + innerWidth / 2
+    return padding.left + (index / (data.length - 1)) * innerWidth
+  }
+
+  const getY = (value) => {
+    return padding.top + ((maxValue - value) / range) * innerHeight
+  }
+
+  const buildPath = (key) => {
+    return data
+      .map((d, i) => {
+        const x = getX(i)
+        const y = getY(Number(d[key] || 0))
+        return `${i === 0 ? 'M' : 'L'} ${x} ${y}`
+      })
+      .join(' ')
+  }
+
+  const ricaviPath = buildPath('ricavi')
+  const costiPath = buildPath('costi')
+  const marginePath = buildPath('margine')
+
+  const yTicks = 5
+  const tickValues = Array.from({ length: yTicks + 1 }, (_, i) => {
+    return minValue + ((maxValue - minValue) / yTicks) * i
+  })
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        style={{
+          width: '100%',
+          height: 'auto',
+          border: '1px solid #ccc',
+          background: '#fff',
+          display: 'block',
+        }}
+      >
+        {tickValues.map((tick, i) => {
+          const y = getY(tick)
+          return (
+            <g key={i}>
+              <line
+                x1={padding.left}
+                y1={y}
+                x2={width - padding.right}
+                y2={y}
+                stroke="#e5e5e5"
+              />
+              <text
+                x={padding.left - 10}
+                y={y + 4}
+                fontSize="11"
+                textAnchor="end"
+                fill="#555"
+              >
+                {formatEuro(tick)}
+              </text>
+            </g>
+          )
+        })}
+
+        <line
+          x1={padding.left}
+          y1={padding.top}
+          x2={padding.left}
+          y2={height - padding.bottom}
+          stroke="#999"
+        />
+        <line
+          x1={padding.left}
+          y1={height - padding.bottom}
+          x2={width - padding.right}
+          y2={height - padding.bottom}
+          stroke="#999"
+        />
+
+        {data.map((d, i) => {
+          const x = getX(i)
+          return (
+            <g key={d.mese}>
+              <line
+                x1={x}
+                y1={height - padding.bottom}
+                x2={x}
+                y2={height - padding.bottom + 6}
+                stroke="#999"
+              />
+              <text
+                x={x}
+                y={height - padding.bottom + 20}
+                fontSize="11"
+                textAnchor="middle"
+                fill="#555"
+              >
+                {d.mese}
+              </text>
+            </g>
+          )
+        })}
+
+        <path d={ricaviPath} fill="none" stroke="#2563eb" strokeWidth="2.5" />
+        <path d={costiPath} fill="none" stroke="#dc2626" strokeWidth="2.5" />
+        <path d={marginePath} fill="none" stroke="#16a34a" strokeWidth="2.5" />
+
+        {data.map((d, i) => {
+          const x = getX(i)
+          return (
+            <g key={`points-${d.mese}`}>
+              <circle cx={x} cy={getY(Number(d.ricavi || 0))} r="3.5" fill="#2563eb" />
+              <circle cx={x} cy={getY(Number(d.costi || 0))} r="3.5" fill="#dc2626" />
+              <circle cx={x} cy={getY(Number(d.margine || 0))} r="3.5" fill="#16a34a" />
+            </g>
+          )
+        })}
+      </svg>
+
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 8, fontSize: 13 }}>
+        <span><strong style={{ color: '#2563eb' }}>■</strong> Ricavi</span>
+        <span><strong style={{ color: '#dc2626' }}>■</strong> Costi totali</span>
+        <span><strong style={{ color: '#16a34a' }}>■</strong> Margine</span>
+      </div>
+    </div>
+  )
+}
+
 function calculateMonthSnapshot({
   monthKey,
   selectedPv,
@@ -535,19 +632,19 @@ function calculateMonthSnapshot({
   const revenuesInMonth = (revenues || []).filter(
     (r) =>
       isInSelectedMonth(r.date, monthKey) &&
-      (selectedPv ? r.point_of_sale_id === selectedPv : true)
+      (selectedPv ? String(r.point_of_sale_id) === String(selectedPv) : true)
   )
 
   const invoicesInMonth = (invoices || []).filter(
     (i) =>
       isInSelectedMonth(i.invoice_date, monthKey) &&
-      (selectedPv ? i.point_of_sale_id === selectedPv : true)
+      (selectedPv ? String(i.point_of_sale_id) === String(selectedPv) : true)
   )
 
   const staffInMonth = (staffCosts || []).filter(
     (s) =>
       isInSelectedMonth(s.period_month, monthKey) &&
-      (selectedPv ? s.point_of_sale_id === selectedPv : true)
+      (selectedPv ? String(s.point_of_sale_id) === String(selectedPv) : true)
   )
 
   const manualCostsInMonth = (manualCosts || []).filter((c) =>
@@ -555,7 +652,7 @@ function calculateMonthSnapshot({
   )
 
   const filteredPvData = (pointsOfSale || []).filter((pv) =>
-    selectedPv ? pv.id === selectedPv : true
+    selectedPv ? String(pv.id) === String(selectedPv) : true
   )
 
   const totalRicaviMese = (revenues || [])
@@ -580,7 +677,7 @@ function calculateMonthSnapshot({
   )
 
   const speseManualiDirette = manualCostsInMonth
-    .filter((c) => !c.is_general && (selectedPv ? c.point_of_sale_id === selectedPv : true))
+    .filter((c) => !c.is_general && (selectedPv ? String(c.point_of_sale_id) === String(selectedPv) : true))
     .reduce((sum, c) => sum + Number(c.amount || 0), 0)
 
   const generalManualCosts = manualCostsInMonth.filter((c) => c.is_general === true)
