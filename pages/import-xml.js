@@ -37,6 +37,24 @@ export default function ImportXml() {
     return map
   }, [suppliers])
 
+  const suppliersByVat = useMemo(() => {
+    const map = new Map()
+    for (const s of suppliers) {
+      const key = normalizeVatOrTaxCode(s.vat_number)
+      if (key) map.set(key, s)
+    }
+    return map
+  }, [suppliers])
+
+  const suppliersByTaxCode = useMemo(() => {
+    const map = new Map()
+    for (const s of suppliers) {
+      const key = normalizeVatOrTaxCode(s.tax_code)
+      if (key) map.set(key, s)
+    }
+    return map
+  }, [suppliers])
+
   const mappingsBySupplierId = useMemo(() => {
     const map = new Map()
     for (const m of mappings) {
@@ -85,10 +103,19 @@ export default function ImportXml() {
         const text = await file.text()
         const parsed = parseFatturaXml(text, file.name)
 
-        const normalizedSupplier = normalizeSupplierName(parsed.supplier_name)
-        const matchedSupplier = normalizedSupplier
-          ? suppliersByNormalizedName.get(normalizedSupplier)
-          : null
+        const normalizedSupplierName = normalizeSupplierName(parsed.supplier_name)
+        const normalizedVat = normalizeVatOrTaxCode(parsed.vat_number)
+        const normalizedTaxCode = normalizeVatOrTaxCode(parsed.tax_code)
+
+        let matchedSupplier = null
+
+        if (normalizedVat && suppliersByVat.has(normalizedVat)) {
+          matchedSupplier = suppliersByVat.get(normalizedVat)
+        } else if (normalizedTaxCode && suppliersByTaxCode.has(normalizedTaxCode)) {
+          matchedSupplier = suppliersByTaxCode.get(normalizedTaxCode)
+        } else if (normalizedSupplierName && suppliersByNormalizedName.has(normalizedSupplierName)) {
+          matchedSupplier = suppliersByNormalizedName.get(normalizedSupplierName)
+        }
 
         const mapping = matchedSupplier
           ? mappingsBySupplierId.get(matchedSupplier.id)
@@ -96,13 +123,22 @@ export default function ImportXml() {
 
         parsedRows.push({
           ...parsed,
-          normalized_supplier_name: normalizedSupplier,
+          normalized_supplier_name: normalizedSupplierName,
+          normalized_vat_number: normalizedVat,
+          normalized_tax_code: normalizedTaxCode,
           supplier_id: matchedSupplier?.id || null,
           matched_supplier_name: matchedSupplier?.name || '',
           point_of_sale_id: mapping?.is_general ? null : mapping?.point_of_sale_id || null,
           category_id: mapping?.category_id || null,
           is_general: !!mapping?.is_general,
           will_create_supplier: !matchedSupplier,
+          match_type: matchedSupplier
+            ? normalizedVat && matchedSupplier.vat_number && normalizeVatOrTaxCode(matchedSupplier.vat_number) === normalizedVat
+              ? 'P.IVA'
+              : normalizedTaxCode && matchedSupplier.tax_code && normalizeVatOrTaxCode(matchedSupplier.tax_code) === normalizedTaxCode
+              ? 'Codice fiscale'
+              : 'Nome'
+            : '',
         })
       } catch (error) {
         parsedRows.push({
@@ -130,10 +166,18 @@ export default function ImportXml() {
       let duplicates = 0
       let skipped = 0
 
-      const localSuppliersMap = new Map()
+      const localSuppliersByName = new Map()
+      const localSuppliersByVat = new Map()
+      const localSuppliersByTaxCode = new Map()
+
       for (const s of suppliers) {
-        const key = s.normalized_name || normalizeSupplierName(s.name)
-        if (key) localSuppliersMap.set(key, s)
+        const normName = s.normalized_name || normalizeSupplierName(s.name)
+        const normVat = normalizeVatOrTaxCode(s.vat_number)
+        const normTax = normalizeVatOrTaxCode(s.tax_code)
+
+        if (normName) localSuppliersByName.set(normName, s)
+        if (normVat) localSuppliersByVat.set(normVat, s)
+        if (normTax) localSuppliersByTaxCode.set(normTax, s)
       }
 
       const localMappingsMap = new Map()
@@ -147,54 +191,99 @@ export default function ImportXml() {
           continue
         }
 
-        let supplierId = row.supplier_id
-        const supplierName = row.supplier_name || ''
-        const normalizedName =
-          row.normalized_supplier_name || normalizeSupplierName(supplierName)
+        let supplier = null
 
-        if (!supplierId && normalizedName) {
-          const existingLocalSupplier = localSuppliersMap.get(normalizedName)
+        if (row.supplier_id) {
+          supplier =
+            suppliers.find((s) => s.id === row.supplier_id) ||
+            localSuppliersByVat.get(row.normalized_vat_number) ||
+            localSuppliersByTaxCode.get(row.normalized_tax_code) ||
+            localSuppliersByName.get(row.normalized_supplier_name) ||
+            null
+        } else {
+          supplier =
+            localSuppliersByVat.get(row.normalized_vat_number) ||
+            localSuppliersByTaxCode.get(row.normalized_tax_code) ||
+            localSuppliersByName.get(row.normalized_supplier_name) ||
+            null
+        }
 
-          if (existingLocalSupplier) {
-            supplierId = existingLocalSupplier.id
-          } else {
-            const { data: newSupplier, error: supplierError } = await supabase
-              .from('suppliers')
-              .insert({
-                name: supplierName,
-                normalized_name: normalizedName,
-              })
-              .select()
-              .single()
+        if (!supplier) {
+          const payloadSupplier = {
+            name: row.supplier_name || null,
+            normalized_name: row.normalized_supplier_name || null,
+            vat_number: row.vat_number || null,
+            tax_code: row.tax_code || null,
+          }
 
-            if (supplierError) {
-              if (supplierError.code === '23505') {
-                const { data: existingSupplier } = await supabase
-                  .from('suppliers')
-                  .select('*')
-                  .eq('normalized_name', normalizedName)
-                  .single()
+          const { data: newSupplier, error: supplierError } = await supabase
+            .from('suppliers')
+            .insert(payloadSupplier)
+            .select()
+            .single()
 
-                if (existingSupplier) {
-                  supplierId = existingSupplier.id
-                  localSuppliersMap.set(normalizedName, existingSupplier)
-                } else {
-                  skipped += 1
-                  continue
+          if (supplierError) {
+            if (supplierError.code === '23505') {
+              supplier =
+                localSuppliersByVat.get(row.normalized_vat_number) ||
+                localSuppliersByTaxCode.get(row.normalized_tax_code) ||
+                localSuppliersByName.get(row.normalized_supplier_name) ||
+                null
+
+              if (!supplier) {
+                if (row.normalized_vat_number) {
+                  const { data } = await supabase
+                    .from('suppliers')
+                    .select('*')
+                    .eq('vat_number', row.vat_number || '')
+                    .maybeSingle()
+                  if (data) supplier = data
                 }
-              } else {
+
+                if (!supplier && row.normalized_tax_code) {
+                  const { data } = await supabase
+                    .from('suppliers')
+                    .select('*')
+                    .eq('tax_code', row.tax_code || '')
+                    .maybeSingle()
+                  if (data) supplier = data
+                }
+
+                if (!supplier && row.normalized_supplier_name) {
+                  const { data } = await supabase
+                    .from('suppliers')
+                    .select('*')
+                    .eq('normalized_name', row.normalized_supplier_name)
+                    .maybeSingle()
+                  if (data) supplier = data
+                }
+              }
+
+              if (!supplier) {
                 skipped += 1
                 continue
               }
             } else {
-              supplierId = newSupplier.id
-              localSuppliersMap.set(normalizedName, newSupplier)
-              createdSuppliers += 1
+              skipped += 1
+              continue
             }
+          } else {
+            supplier = newSupplier
+            createdSuppliers += 1
+          }
+
+          if (supplier) {
+            const normName = supplier.normalized_name || normalizeSupplierName(supplier.name)
+            const normVat = normalizeVatOrTaxCode(supplier.vat_number)
+            const normTax = normalizeVatOrTaxCode(supplier.tax_code)
+
+            if (normName) localSuppliersByName.set(normName, supplier)
+            if (normVat) localSuppliersByVat.set(normVat, supplier)
+            if (normTax) localSuppliersByTaxCode.set(normTax, supplier)
           }
         }
 
-        if (!supplierId) {
+        if (!supplier?.id) {
           skipped += 1
           continue
         }
@@ -202,7 +291,7 @@ export default function ImportXml() {
         const { data: existingInvoice, error: existingInvoiceError } = await supabase
           .from('invoices')
           .select('id')
-          .eq('supplier_id', supplierId)
+          .eq('supplier_id', supplier.id)
           .eq('invoice_number', row.invoice_number || null)
           .eq('invoice_date', row.invoice_date || null)
           .maybeSingle()
@@ -217,21 +306,21 @@ export default function ImportXml() {
           continue
         }
 
-        const mapping = localMappingsMap.get(supplierId) || null
+        const mapping = localMappingsMap.get(supplier.id) || null
 
-        const payload = {
-          supplier_id: supplierId,
-          supplier_name: supplierName || null,
+        const payloadInvoice = {
+          supplier_id: supplier.id,
+          supplier_name: row.supplier_name || null,
           invoice_date: row.invoice_date || null,
           invoice_number: row.invoice_number || null,
-          amount: row.amount ? Number(row.amount) : null,
+          amount: row.amount ? Number(row.amount) : null, // imponibile
           point_of_sale_id: mapping?.is_general ? null : mapping?.point_of_sale_id || null,
           category_id: mapping?.category_id || null,
           is_general: !!mapping?.is_general,
           source_filename: row.source_filename || null,
         }
 
-        const { error } = await supabase.from('invoices').insert(payload)
+        const { error } = await supabase.from('invoices').insert(payloadInvoice)
 
         if (error) {
           if (error.code === '23505') {
@@ -305,11 +394,13 @@ export default function ImportXml() {
             <tr>
               <th style={th}>File</th>
               <th style={th}>Fornitore XML</th>
+              <th style={th}>P.IVA</th>
+              <th style={th}>CF</th>
               <th style={th}>Fornitore trovato</th>
+              <th style={th}>Match</th>
               <th style={th}>Numero</th>
               <th style={th}>Data</th>
               <th style={th}>Imponibile</th>
-              <th style={th}>Generale</th>
               <th style={th}>Esito</th>
             </tr>
           </thead>
@@ -318,11 +409,13 @@ export default function ImportXml() {
               <tr key={idx}>
                 <td style={td}>{row.source_filename || ''}</td>
                 <td style={td}>{row.supplier_name || ''}</td>
+                <td style={td}>{row.vat_number || ''}</td>
+                <td style={td}>{row.tax_code || ''}</td>
                 <td style={td}>{row.matched_supplier_name || ''}</td>
+                <td style={td}>{row.match_type || ''}</td>
                 <td style={td}>{row.invoice_number || ''}</td>
                 <td style={td}>{row.invoice_date || ''}</td>
                 <td style={td}>{row.amount || ''}</td>
-                <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
                 <td style={td}>
                   {row.error
                     ? `Errore: ${row.error}`
@@ -357,6 +450,10 @@ function parseFatturaXml(xmlText, filename) {
       getNodeText(xml, 'CedentePrestatore Cognome')
     )
 
+  const vatCountry = getNodeText(xml, 'CedentePrestatore IdFiscaleIVA IdPaese')
+  const vatCode = getNodeText(xml, 'CedentePrestatore IdFiscaleIVA IdCodice')
+  const taxCode = getNodeText(xml, 'CedentePrestatore CodiceFiscale')
+
   const invoiceNumber = getNodeText(xml, 'DatiGeneraliDocumento Numero')
   const invoiceDate = getNodeText(xml, 'DatiGeneraliDocumento Data')
 
@@ -376,9 +473,14 @@ function parseFatturaXml(xmlText, filename) {
     throw new Error('Fornitore non trovato nel file XML')
   }
 
+  const fullVatNumber =
+    vatCode ? `${(vatCountry || '').trim()}${String(vatCode).trim()}` : ''
+
   return {
     source_filename: filename,
     supplier_name: supplierName,
+    vat_number: fullVatNumber,
+    tax_code: (taxCode || '').trim(),
     invoice_number: invoiceNumber || '',
     invoice_date: invoiceDate || '',
     amount: sanitizeNumber(amount || ''),
@@ -432,6 +534,13 @@ function normalizeSupplierName(value) {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .replace(/[.,]/g, '')
+    .trim()
+}
+
+function normalizeVatOrTaxCode(value) {
+  return String(value || '')
+    .toUpperCase()
+    .replace(/\s+/g, '')
     .trim()
 }
 
