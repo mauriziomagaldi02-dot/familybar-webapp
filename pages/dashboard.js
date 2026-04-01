@@ -76,16 +76,14 @@ export default function Dashboard() {
       0
     )
 
-    const generalManualCosts = filteredManualCosts.filter(
-      (c) => c.is_general === true
-    )
+    const generalManualCosts = filteredManualCosts.filter((c) => c.is_general === true)
 
     const result = (pvData || []).map((pv) => {
       const ricavi = filteredRevenues
         .filter((r) => r.point_of_sale_id === pv.id)
         .reduce((sum, r) => sum + Number(r.amount || 0), 0)
 
-      const costiFatture = filteredInvoices
+      const costiFattureImponibile = filteredInvoices
         .filter((i) => i.point_of_sale_id === pv.id)
         .reduce((sum, i) => sum + Number(i.amount || 0), 0)
 
@@ -113,7 +111,7 @@ export default function Dashboard() {
       }, 0)
 
       const costiTotali =
-        costiFatture + costoPersonale + speseManualiDirette + quotaGenerali
+        costiFattureImponibile + costoPersonale + speseManualiDirette + quotaGenerali
 
       const margine = ricavi - costiTotali
       const produttivitaOraria = ore > 0 ? ricavi / ore : 0
@@ -123,7 +121,7 @@ export default function Dashboard() {
         id: pv.id,
         nome: pv.name,
         ricavi,
-        costiFatture,
+        costiFattureImponibile,
         costoPersonale,
         speseManualiDirette,
         quotaGenerali,
@@ -142,7 +140,7 @@ export default function Dashboard() {
     return rows.reduce(
       (acc, row) => {
         acc.ricavi += row.ricavi
-        acc.costiFatture += row.costiFatture
+        acc.costiFattureImponibile += row.costiFattureImponibile
         acc.costoPersonale += row.costoPersonale
         acc.speseManualiDirette += row.speseManualiDirette
         acc.quotaGenerali += row.quotaGenerali
@@ -153,7 +151,7 @@ export default function Dashboard() {
       },
       {
         ricavi: 0,
-        costiFatture: 0,
+        costiFattureImponibile: 0,
         costoPersonale: 0,
         speseManualiDirette: 0,
         quotaGenerali: 0,
@@ -196,7 +194,7 @@ export default function Dashboard() {
           <tr>
             <th style={th}>PV</th>
             <th style={th}>Ricavi</th>
-            <th style={th}>Costi fatture</th>
+            <th style={th}>Costi fatture (imponibile)</th>
             <th style={th}>Costo personale</th>
             <th style={th}>Spese manuali dirette</th>
             <th style={th}>Quota costi generali</th>
@@ -205,6 +203,7 @@ export default function Dashboard() {
             <th style={th}>Ore</th>
             <th style={th}>Produttività €/h</th>
             <th style={th}>Costo pers. % ricavi</th>
+            <th style={th}>Stato</th>
           </tr>
         </thead>
         <tbody>
@@ -212,33 +211,81 @@ export default function Dashboard() {
             <tr key={row.id}>
               <td style={td}>{row.nome}</td>
               <td style={td}>{formatEuro(row.ricavi)}</td>
-              <td style={td}>{formatEuro(row.costiFatture)}</td>
+              <td style={td}>{formatEuro(row.costiFattureImponibile)}</td>
               <td style={td}>{formatEuro(row.costoPersonale)}</td>
               <td style={td}>{formatEuro(row.speseManualiDirette)}</td>
               <td style={td}>{formatEuro(row.quotaGenerali)}</td>
               <td style={td}>{formatEuro(row.costiTotali)}</td>
-              <td style={{ ...td, fontWeight: 700 }}>{formatEuro(row.margine)}</td>
+              <td style={{ ...td, ...getMargineStyle(row.margine), fontWeight: 700 }}>
+                {formatEuro(row.margine)}
+              </td>
               <td style={td}>{formatNumber(row.ore)}</td>
-              <td style={td}>{formatEuro(row.produttivitaOraria)}</td>
-              <td style={td}>{formatPercent(row.costoPersonalePerc)}</td>
+              <td style={{ ...td, ...getProduttivitaStyle(row.produttivitaOraria) }}>
+                {formatEuro(row.produttivitaOraria)}
+              </td>
+              <td style={{ ...td, ...getCostoPersonalePercStyle(row.costoPersonalePerc) }}>
+                {formatPercent(row.costoPersonalePerc)}
+              </td>
+              <td style={td}>
+                <span style={badgeStyle(getOverallStatus(row))}>
+                  {getOverallStatusLabel(row)}
+                </span>
+              </td>
             </tr>
           ))}
 
           <tr>
             <td style={{ ...td, fontWeight: 700 }}>Totale</td>
             <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.ricavi)}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.costiFatture)}</td>
+            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.costiFattureImponibile)}</td>
             <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.costoPersonale)}</td>
             <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.speseManualiDirette)}</td>
             <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.quotaGenerali)}</td>
             <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.costiTotali)}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.margine)}</td>
+            <td style={{ ...td, ...getMargineStyle(totals.margine), fontWeight: 700 }}>
+              {formatEuro(totals.margine)}
+            </td>
             <td style={{ ...td, fontWeight: 700 }}>{formatNumber(totals.ore)}</td>
-            <td style={{ ...td, fontWeight: 700 }}>
+            <td
+              style={{
+                ...td,
+                ...getProduttivitaStyle(totals.ore > 0 ? totals.ricavi / totals.ore : 0),
+                fontWeight: 700,
+              }}
+            >
               {formatEuro(totals.ore > 0 ? totals.ricavi / totals.ore : 0)}
             </td>
-            <td style={{ ...td, fontWeight: 700 }}>
-              {formatPercent(totals.ricavi > 0 ? (totals.costoPersonale / totals.ricavi) * 100 : 0)}
+            <td
+              style={{
+                ...td,
+                ...getCostoPersonalePercStyle(
+                  totals.ricavi > 0 ? (totals.costoPersonale / totals.ricavi) * 100 : 0
+                ),
+                fontWeight: 700,
+              }}
+            >
+              {formatPercent(
+                totals.ricavi > 0 ? (totals.costoPersonale / totals.ricavi) * 100 : 0
+              )}
+            </td>
+            <td style={td}>
+              <span
+                style={badgeStyle(
+                  getOverallStatus({
+                    produttivitaOraria: totals.ore > 0 ? totals.ricavi / totals.ore : 0,
+                    margine: totals.margine,
+                    costoPersonalePerc:
+                      totals.ricavi > 0 ? (totals.costoPersonale / totals.ricavi) * 100 : 0,
+                  })
+                )}
+              >
+                {getOverallStatusLabel({
+                  produttivitaOraria: totals.ore > 0 ? totals.ricavi / totals.ore : 0,
+                  margine: totals.margine,
+                  costoPersonalePerc:
+                    totals.ricavi > 0 ? (totals.costoPersonale / totals.ricavi) * 100 : 0,
+                })}
+              </span>
             </td>
           </tr>
         </tbody>
@@ -257,6 +304,76 @@ function getCurrentMonth() {
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
   return `${year}-${month}`
+}
+
+function getOverallStatus(row) {
+  if (
+    Number(row.produttivitaOraria || 0) < 35 ||
+    Number(row.margine || 0) < 0 ||
+    Number(row.costoPersonalePerc || 0) > 35
+  ) {
+    return 'bad'
+  }
+
+  if (
+    Number(row.produttivitaOraria || 0) < 40 ||
+    Number(row.costoPersonalePerc || 0) > 30
+  ) {
+    return 'warn'
+  }
+
+  return 'ok'
+}
+
+function getOverallStatusLabel(row) {
+  const status = getOverallStatus(row)
+  if (status === 'bad') return 'Critico'
+  if (status === 'warn') return 'Attenzione'
+  return 'Buono'
+}
+
+function getProduttivitaStyle(value) {
+  if (Number(value || 0) >= 40) return { background: '#dff0d8' }
+  if (Number(value || 0) >= 35) return { background: '#fcf8e3' }
+  return { background: '#f2dede' }
+}
+
+function getMargineStyle(value) {
+  if (Number(value || 0) >= 0) return { background: '#dff0d8' }
+  return { background: '#f2dede' }
+}
+
+function getCostoPersonalePercStyle(value) {
+  if (Number(value || 0) <= 30) return { background: '#dff0d8' }
+  if (Number(value || 0) <= 35) return { background: '#fcf8e3' }
+  return { background: '#f2dede' }
+}
+
+function badgeStyle(status) {
+  if (status === 'ok') {
+    return {
+      display: 'inline-block',
+      padding: '4px 8px',
+      background: '#dff0d8',
+      border: '1px solid #c3e6cb',
+    }
+  }
+
+  if (status === 'warn') {
+    return {
+      display: 'inline-block',
+      padding: '4px 8px',
+      background: '#fcf8e3',
+      border: '1px solid #faebcc',
+    }
+  }
+
+  return {
+    display: 'inline-block',
+    padding: '4px 8px',
+    background: '#f2dede',
+    border: '1px solid #ebccd1',
+  }
 }
 
 function formatEuro(value) {
