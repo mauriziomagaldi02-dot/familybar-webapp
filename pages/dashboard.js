@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
 
@@ -6,6 +6,7 @@ export default function Dashboard() {
   const [user, setUser] = useState(null)
   const [rows, setRows] = useState([])
   const [message, setMessage] = useState('')
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth())
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -23,7 +24,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (user) loadData()
-  }, [user])
+  }, [user, selectedMonth])
 
   async function loadData() {
     setMessage('')
@@ -54,38 +55,61 @@ export default function Dashboard() {
       return
     }
 
-    const totalRicavi = (revenuesData || []).reduce(
+    const filteredRevenues = (revenuesData || []).filter((r) =>
+      isInSelectedMonth(r.date, selectedMonth)
+    )
+
+    const filteredInvoices = (invoicesData || []).filter((i) =>
+      isInSelectedMonth(i.invoice_date, selectedMonth)
+    )
+
+    const filteredStaff = (staffData || []).filter((s) =>
+      isInSelectedMonth(s.period_month, selectedMonth)
+    )
+
+    const filteredManualCosts = (manualCostsData || []).filter((c) =>
+      isInSelectedMonth(c.cost_date, selectedMonth)
+    )
+
+    const totalRicavi = filteredRevenues.reduce(
       (sum, r) => sum + Number(r.amount || 0),
       0
     )
 
-    const generalManualCosts = (manualCostsData || []).filter((c) => c.is_general)
+    const generalManualCosts = filteredManualCosts.filter(
+      (c) => c.is_general === true
+    )
 
     const result = (pvData || []).map((pv) => {
-      const ricavi = (revenuesData || [])
+      const ricavi = filteredRevenues
         .filter((r) => r.point_of_sale_id === pv.id)
         .reduce((sum, r) => sum + Number(r.amount || 0), 0)
 
-      const costiFatture = (invoicesData || [])
+      const costiFatture = filteredInvoices
         .filter((i) => i.point_of_sale_id === pv.id)
         .reduce((sum, i) => sum + Number(i.amount || 0), 0)
 
-      const costoPersonale = (staffData || [])
+      const costoPersonale = filteredStaff
         .filter((s) => s.point_of_sale_id === pv.id)
         .reduce((sum, s) => sum + Number(s.amount || 0), 0)
 
-      const ore = (staffData || [])
+      const ore = filteredStaff
         .filter((s) => s.point_of_sale_id === pv.id)
         .reduce((sum, s) => sum + Number(s.worked_hours || 0), 0)
 
-      const speseManualiDirette = (manualCostsData || [])
+      const speseManualiDirette = filteredManualCosts
         .filter((c) => !c.is_general && c.point_of_sale_id === pv.id)
         .reduce((sum, c) => sum + Number(c.amount || 0), 0)
 
       const quotaGenerali = generalManualCosts.reduce((sum, c) => {
         const amount = Number(c.amount || 0)
-        if (totalRicavi <= 0) return sum
-        return sum + amount * (ricavi / totalRicavi)
+
+        if (totalRicavi > 0) {
+          return sum + amount * (ricavi / totalRicavi)
+        }
+
+        const numeroPv = (pvData || []).length || 1
+        return sum + amount / numeroPv
       }, 0)
 
       const costiTotali =
@@ -114,6 +138,32 @@ export default function Dashboard() {
     setRows(result)
   }
 
+  const totals = useMemo(() => {
+    return rows.reduce(
+      (acc, row) => {
+        acc.ricavi += row.ricavi
+        acc.costiFatture += row.costiFatture
+        acc.costoPersonale += row.costoPersonale
+        acc.speseManualiDirette += row.speseManualiDirette
+        acc.quotaGenerali += row.quotaGenerali
+        acc.costiTotali += row.costiTotali
+        acc.margine += row.margine
+        acc.ore += row.ore
+        return acc
+      },
+      {
+        ricavi: 0,
+        costiFatture: 0,
+        costoPersonale: 0,
+        speseManualiDirette: 0,
+        quotaGenerali: 0,
+        costiTotali: 0,
+        margine: 0,
+        ore: 0,
+      }
+    )
+  }, [rows])
+
   if (!user) {
     return (
       <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
@@ -125,9 +175,18 @@ export default function Dashboard() {
 
   return (
     <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 20 }}>
         <h1 style={{ margin: 0 }}>Dashboard</h1>
         <Link href="/">Home</Link>
+      </div>
+
+      <div style={{ marginBottom: 20, display: 'flex', gap: 12, alignItems: 'center' }}>
+        <label>Mese di riferimento</label>
+        <input
+          type="month"
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+        />
       </div>
 
       {message && <p style={{ color: 'red', marginTop: 16 }}>{message}</p>}
@@ -164,10 +223,40 @@ export default function Dashboard() {
               <td style={td}>{formatPercent(row.costoPersonalePerc)}</td>
             </tr>
           ))}
+
+          <tr>
+            <td style={{ ...td, fontWeight: 700 }}>Totale</td>
+            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.ricavi)}</td>
+            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.costiFatture)}</td>
+            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.costoPersonale)}</td>
+            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.speseManualiDirette)}</td>
+            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.quotaGenerali)}</td>
+            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.costiTotali)}</td>
+            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.margine)}</td>
+            <td style={{ ...td, fontWeight: 700 }}>{formatNumber(totals.ore)}</td>
+            <td style={{ ...td, fontWeight: 700 }}>
+              {formatEuro(totals.ore > 0 ? totals.ricavi / totals.ore : 0)}
+            </td>
+            <td style={{ ...td, fontWeight: 700 }}>
+              {formatPercent(totals.ricavi > 0 ? (totals.costoPersonale / totals.ricavi) * 100 : 0)}
+            </td>
+          </tr>
         </tbody>
       </table>
     </div>
   )
+}
+
+function isInSelectedMonth(value, selectedMonth) {
+  if (!value || !selectedMonth) return false
+  return String(value).slice(0, 7) === selectedMonth
+}
+
+function getCurrentMonth() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
 }
 
 function formatEuro(value) {
