@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabaseClient'
 
 const initialForm = {
   supplier_id: '',
+  invoice_number: '',
   invoice_date: '',
   amount: '',
   point_of_sale_id: '',
@@ -124,8 +125,9 @@ export default function Fatture() {
 
     const payload = {
       supplier_id: form.supplier_id || null,
+      invoice_number: form.invoice_number || null,
       invoice_date: form.invoice_date || null,
-      amount: form.amount ? Number(form.amount) : null,
+      amount: form.amount ? Number(form.amount) : null, // imponibile
       point_of_sale_id: form.is_general ? null : form.point_of_sale_id || null,
       category_id: form.category_id || null,
       is_general: !!form.is_general,
@@ -164,6 +166,7 @@ export default function Fatture() {
     setEditingId(row.id)
     setForm({
       supplier_id: row.supplier_id || '',
+      invoice_number: row.invoice_number || '',
       invoice_date: row.invoice_date || '',
       amount: row.amount ?? '',
       point_of_sale_id: row.point_of_sale_id || '',
@@ -187,9 +190,7 @@ export default function Fatture() {
       return
     }
 
-    if (editingId === id) {
-      resetForm()
-    }
+    if (editingId === id) resetForm()
 
     setMessage('Fattura cancellata.')
     loadData()
@@ -258,6 +259,13 @@ export default function Fatture() {
         </select>
 
         <input
+          type="text"
+          placeholder="Numero fattura"
+          value={form.invoice_number}
+          onChange={(e) => setForm({ ...form, invoice_number: e.target.value })}
+        />
+
+        <input
           type="date"
           value={form.invoice_date}
           onChange={(e) => setForm({ ...form, invoice_date: e.target.value })}
@@ -266,7 +274,7 @@ export default function Fatture() {
         <input
           type="number"
           step="0.01"
-          placeholder="Importo"
+          placeholder="Imponibile"
           value={form.amount}
           onChange={(e) => setForm({ ...form, amount: e.target.value })}
         />
@@ -333,7 +341,8 @@ export default function Fatture() {
           <thead>
             <tr>
               <th style={th}>Data</th>
-              <th style={th}>Importo</th>
+              <th style={th}>Numero</th>
+              <th style={th}>Imponibile</th>
               <th style={th}>Fornitore</th>
               <th style={th}>PV</th>
               <th style={th}>Categoria</th>
@@ -345,6 +354,7 @@ export default function Fatture() {
             {rows.map((row) => (
               <tr key={row.id}>
                 <td style={td}>{row.invoice_date || ''}</td>
+                <td style={td}>{row.invoice_number || ''}</td>
                 <td style={td}>{row.amount || ''}</td>
                 <td style={td}>{getSupplierName(row.supplier_id)}</td>
                 <td style={td}>{row.is_general ? '' : getPvName(row.point_of_sale_id)}</td>
