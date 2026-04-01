@@ -51,7 +51,7 @@ export default function Home() {
                 alt="logo"
                 style={{
                   height: 70,
-                  objectFit: 'contain'
+                  objectFit: 'contain',
                 }}
               />
             </div>
@@ -89,18 +89,19 @@ export default function Home() {
     <div style={pageStyle}>
       <div style={containerStyle}>
         <div style={topBarStyle}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={brandWrapStyle}>
             <img
               src="/logo.png"
               alt="logo"
               style={{
-                height: 40,
-                objectFit: 'contain'
+                height: 42,
+                objectFit: 'contain',
               }}
             />
 
             <div>
               <h1 style={titleStyle}>Business Analytics</h1>
+              <p style={subtitleStyle}>Pannello operativo Familybar</p>
             </div>
           </div>
 
@@ -111,33 +112,44 @@ export default function Home() {
 
         {message && <p style={errorTextStyle}>{message}</p>}
 
-        <div style={singleCardWrapStyle}>
-          <div style={cardStyle}>
-            <h2 style={sectionTitleStyle}>Menu</h2>
-
-            <div style={linksGridStyle}>
-              <MenuLink href="/fatture" label="Fatture" />
-              <MenuLink href="/ricavi" label="Ricavi" />
-              <MenuLink href="/costi-personale" label="Costi personale" />
-              <MenuLink href="/spese-manuali" label="Spese manuali" />
-              <MenuLink href="/dashboard" label="Dashboard" />
-              <MenuLink href="/mappature" label="Mappature fornitori" />
-              <MenuLink href="/import-xml" label="Import XML" />
-              <MenuLink href="/fornitori" label="Fornitori" />
-              <MenuLink href="/analisi" label="Analisi avanzata" />
-            </div>
+        <div style={heroCardStyle}>
+          <div>
+            <p style={heroEyebrowStyle}>Gestionale interno</p>
+            <h2 style={heroTitleStyle}>Accesso rapido ai moduli</h2>
+            <p style={heroTextStyle}>
+              Seleziona un’area per inserire dati, controllare risultati e analizzare le performance.
+            </p>
           </div>
+        </div>
+
+        <div style={menuSectionStyle}>
+          <MenuLink href="/dashboard" label="Dashboard" icon="📊" note="Sintesi mensile e semafori" />
+          <MenuLink href="/analisi" label="Analisi avanzata" icon="📈" note="Pareto, grafici e confronto dati" />
+          <MenuLink href="/fatture" label="Fatture" icon="🧾" note="Gestione acquisti e imponibili" />
+          <MenuLink href="/ricavi" label="Ricavi" icon="💶" note="Inserimento ricavi per PV" />
+          <MenuLink href="/costi-personale" label="Costi personale" icon="👥" note="Costo lavoro e ore" />
+          <MenuLink href="/spese-manuali" label="Spese manuali" icon="📝" note="Costi extra e costi generali" />
+          <MenuLink href="/import-xml" label="Import XML" icon="📂" note="Importazione FatturaPA" />
+          <MenuLink href="/mappature" label="Mappature fornitori" icon="🧩" note="Regole automatiche di assegnazione" />
+          <MenuLink href="/fornitori" label="Fornitori" icon="🏷️" note="Anagrafica, P.IVA e codice fiscale" />
         </div>
       </div>
     </div>
   )
 }
 
-function MenuLink({ href, label }) {
+function MenuLink({ href, label, icon, note }) {
   return (
-    <Link href={href} style={menuLinkStyle}>
-      <span>{label}</span>
-      <span style={menuArrowStyle}>→</span>
+    <Link href={href} style={menuCardStyle}>
+      <div style={menuTopRowStyle}>
+        <div style={menuIconStyle}>{icon}</div>
+        <div style={menuArrowStyle}>→</div>
+      </div>
+
+      <div>
+        <div style={menuTitleStyle}>{label}</div>
+        <div style={menuNoteStyle}>{note}</div>
+      </div>
     </Link>
   )
 }
@@ -149,7 +161,7 @@ const pageStyle = {
 }
 
 const containerStyle = {
-  maxWidth: 1200,
+  maxWidth: 1240,
   margin: '0 auto',
   padding: '32px 24px 48px',
 }
@@ -167,7 +179,7 @@ const loginCardStyle = {
   maxWidth: 420,
   background: '#ffffff',
   border: '1px solid #e5e7eb',
-  borderRadius: 16,
+  borderRadius: 18,
   padding: 32,
   boxShadow: '0 10px 30px rgba(0,0,0,0.05)',
 }
@@ -181,34 +193,109 @@ const topBarStyle = {
   flexWrap: 'wrap',
 }
 
-const singleCardWrapStyle = {
-  display: 'block',
-}
-
-const cardStyle = {
-  background: '#ffffff',
-  border: '1px solid #e5e7eb',
-  borderRadius: 16,
-  padding: 24,
-  boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
-}
-
-const linksGridStyle = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-  gap: 12,
+const brandWrapStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 16,
 }
 
 const titleStyle = {
   margin: 0,
-  fontSize: 28,
+  fontSize: 30,
+  color: '#111827',
+  lineHeight: 1.1,
+}
+
+const subtitleStyle = {
+  margin: '6px 0 0 0',
+  color: '#6b7280',
+  fontSize: 14,
+}
+
+const heroCardStyle = {
+  background: '#ffffff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 18,
+  padding: 24,
+  boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+  marginBottom: 24,
+}
+
+const heroEyebrowStyle = {
+  margin: 0,
+  fontSize: 12,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: '#6b7280',
+}
+
+const heroTitleStyle = {
+  margin: '8px 0 8px 0',
+  fontSize: 24,
   color: '#111827',
 }
 
-const sectionTitleStyle = {
-  margin: '0 0 18px 0',
-  fontSize: 20,
+const heroTextStyle = {
+  margin: 0,
+  color: '#4b5563',
+  fontSize: 15,
+}
+
+const menuSectionStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+  gap: 16,
+}
+
+const menuCardStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  justifyContent: 'space-between',
+  minHeight: 140,
+  padding: 18,
+  border: '1px solid #e5e7eb',
+  borderRadius: 16,
+  background: '#ffffff',
+  textDecoration: 'none',
   color: '#111827',
+  boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+}
+
+const menuTopRowStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 18,
+}
+
+const menuIconStyle = {
+  width: 40,
+  height: 40,
+  borderRadius: 12,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: '#f3f4f6',
+  fontSize: 20,
+}
+
+const menuArrowStyle = {
+  color: '#9ca3af',
+  fontSize: 20,
+  fontWeight: 700,
+}
+
+const menuTitleStyle = {
+  fontSize: 17,
+  fontWeight: 700,
+  color: '#111827',
+  marginBottom: 6,
+}
+
+const menuNoteStyle = {
+  fontSize: 13,
+  color: '#6b7280',
+  lineHeight: 1.4,
 }
 
 const inputStyle = {
@@ -216,6 +303,8 @@ const inputStyle = {
   padding: '12px 14px',
   border: '1px solid #d1d5db',
   borderRadius: 12,
+  fontSize: 15,
+  outline: 'none',
 }
 
 const primaryButtonStyle = {
@@ -225,6 +314,8 @@ const primaryButtonStyle = {
   background: '#111827',
   color: '#fff',
   cursor: 'pointer',
+  fontSize: 15,
+  fontWeight: 600,
 }
 
 const logoutButtonStyle = {
@@ -233,24 +324,11 @@ const logoutButtonStyle = {
   borderRadius: 12,
   background: '#fff',
   cursor: 'pointer',
+  fontSize: 14,
+  fontWeight: 600,
 }
 
 const errorTextStyle = {
   marginTop: 16,
   color: '#b91c1c',
-}
-
-const menuLinkStyle = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  padding: '12px',
-  border: '1px solid #e5e7eb',
-  borderRadius: 10,
-  textDecoration: 'none',
-  color: '#111827',
-  fontWeight: 600,
-}
-
-const menuArrowStyle = {
-  color: '#6b7280',
 }
