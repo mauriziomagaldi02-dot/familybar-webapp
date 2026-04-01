@@ -100,13 +100,7 @@ export default function Analisi() {
     const speseManuali = sumAmounts(data.manualCosts)
     const margine = ricavi - acquisti - costoPersonale - speseManuali
 
-    return {
-      ricavi,
-      acquisti,
-      costoPersonale,
-      speseManuali,
-      margine,
-    }
+    return { ricavi, acquisti, costoPersonale, speseManuali, margine }
   }, [data])
 
   const supplierAnalysis = useMemo(() => {
@@ -177,6 +171,7 @@ export default function Analisi() {
 
         const margine = ricavi - acquisti - costoPersonale - speseManuali
         const produttivita = ore > 0 ? ricavi / ore : 0
+        const costoPersonalePerc = ricavi > 0 ? (costoPersonale / ricavi) * 100 : 0
 
         return {
           id: pv.id,
@@ -188,6 +183,7 @@ export default function Analisi() {
           margine,
           ore,
           produttivita,
+          costoPersonalePerc,
         }
       })
       .sort((a, b) => b.ricavi - a.ricavi)
@@ -244,7 +240,9 @@ export default function Analisi() {
             <td style={td}>{formatEuro(summary.acquisti)}</td>
             <td style={td}>{formatEuro(summary.costoPersonale)}</td>
             <td style={td}>{formatEuro(summary.speseManuali)}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(summary.margine)}</td>
+            <td style={{ ...td, ...getMargineStyle(summary.margine), fontWeight: 700 }}>
+              {formatEuro(summary.margine)}
+            </td>
           </tr>
         </tbody>
       </table>
@@ -286,6 +284,8 @@ export default function Analisi() {
             <th style={th}>Margine</th>
             <th style={th}>Ore</th>
             <th style={th}>Produttività €/h</th>
+            <th style={th}>Costo pers. % ricavi</th>
+            <th style={th}>Semaforo</th>
           </tr>
         </thead>
         <tbody>
@@ -296,9 +296,19 @@ export default function Analisi() {
               <td style={td}>{formatEuro(row.acquisti)}</td>
               <td style={td}>{formatEuro(row.costoPersonale)}</td>
               <td style={td}>{formatEuro(row.speseManuali)}</td>
-              <td style={{ ...td, fontWeight: 700 }}>{formatEuro(row.margine)}</td>
+              <td style={{ ...td, ...getMargineStyle(row.margine), fontWeight: 700 }}>
+                {formatEuro(row.margine)}
+              </td>
               <td style={td}>{formatNumber(row.ore)}</td>
-              <td style={td}>{formatEuro(row.produttivita)}</td>
+              <td style={{ ...td, ...getProduttivitaStyle(row.produttivita) }}>
+                {formatEuro(row.produttivita)}
+              </td>
+              <td style={{ ...td, ...getCostoPersonalePercStyle(row.costoPersonalePerc) }}>
+                {formatPercent(row.costoPersonalePerc)}
+              </td>
+              <td style={td}>
+                <span style={badgeStyle(getOverallStatus(row))}>{getOverallStatusLabel(row)}</span>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -344,7 +354,11 @@ export default function Analisi() {
               <td style={td}>{formatEuro(row.imponibile)}</td>
               <td style={td}>{formatPercent(row.incidenza)}</td>
               <td style={td}>{formatPercent(row.cumulataPerc)}</td>
-              <td style={td}>{row.inPareto80 ? 'Sì' : 'No'}</td>
+              <td style={td}>
+                <span style={badgeStyle(row.inPareto80 ? 'ok' : 'warn')}>
+                  {row.inPareto80 ? 'Sì' : 'No'}
+                </span>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -385,7 +399,10 @@ function BarChart({ rows, valueKey, labelKey, valueFormatter, threshold = null }
       {rows.map((row, index) => {
         const value = Number(row[valueKey] || 0)
         const width = max > 0 ? (value / max) * 100 : 0
-        const isBelowThreshold = threshold !== null && value < threshold
+        const style =
+          threshold !== null
+            ? getProduttivitaBarStyle(value)
+            : { background: '#5bc0de' }
 
         return (
           <div key={row.id || index} style={{ marginBottom: 14 }}>
@@ -414,7 +431,7 @@ function BarChart({ rows, valueKey, labelKey, valueFormatter, threshold = null }
                 style={{
                   width: `${width}%`,
                   height: '100%',
-                  background: isBelowThreshold ? '#d9534f' : '#5bc0de',
+                  ...style,
                 }}
               />
             </div>
@@ -423,6 +440,67 @@ function BarChart({ rows, valueKey, labelKey, valueFormatter, threshold = null }
       })}
     </div>
   )
+}
+
+function getOverallStatus(row) {
+  if (row.produttivita < 35 || row.margine < 0 || row.costoPersonalePerc > 35) return 'bad'
+  if (row.produttivita < 40 || row.costoPersonalePerc > 30) return 'warn'
+  return 'ok'
+}
+
+function getOverallStatusLabel(row) {
+  const status = getOverallStatus(row)
+  if (status === 'bad') return 'Critico'
+  if (status === 'warn') return 'Attenzione'
+  return 'Buono'
+}
+
+function getProduttivitaStyle(value) {
+  if (value >= 40) return { background: '#dff0d8' }
+  if (value >= 35) return { background: '#fcf8e3' }
+  return { background: '#f2dede' }
+}
+
+function getProduttivitaBarStyle(value) {
+  if (value >= 40) return { background: '#5cb85c' }
+  if (value >= 35) return { background: '#f0ad4e' }
+  return { background: '#d9534f' }
+}
+
+function getMargineStyle(value) {
+  if (value >= 0) return { background: '#dff0d8' }
+  return { background: '#f2dede' }
+}
+
+function getCostoPersonalePercStyle(value) {
+  if (value <= 30) return { background: '#dff0d8' }
+  if (value <= 35) return { background: '#fcf8e3' }
+  return { background: '#f2dede' }
+}
+
+function badgeStyle(status) {
+  if (status === 'ok') {
+    return {
+      display: 'inline-block',
+      padding: '4px 8px',
+      background: '#dff0d8',
+      border: '1px solid #c3e6cb',
+    }
+  }
+  if (status === 'warn') {
+    return {
+      display: 'inline-block',
+      padding: '4px 8px',
+      background: '#fcf8e3',
+      border: '1px solid #faebcc',
+    }
+  }
+  return {
+    display: 'inline-block',
+    padding: '4px 8px',
+    background: '#f2dede',
+    border: '1px solid #ebccd1',
+  }
 }
 
 function sumAmounts(rows) {
