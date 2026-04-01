@@ -17,7 +17,7 @@ export default function Fatture() {
   const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
   const [editingId, setEditingId] = useState(null)
-  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth())
+  const [selectedMonth, setSelectedMonth] = useState('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -40,20 +40,26 @@ export default function Fatture() {
   async function loadData() {
     setMessage('')
 
-    const startDate = `${selectedMonth}-01`
-    const endDate = `${getNextMonth(selectedMonth)}-01`
+    let invoicesQuery = supabase
+      .from('invoices')
+      .select('*')
+      .order('invoice_date', { ascending: false })
+
+    if (selectedMonth) {
+      const startDate = `${selectedMonth}-01`
+      const endDate = `${getNextMonth(selectedMonth)}-01`
+
+      invoicesQuery = invoicesQuery
+        .gte('invoice_date', startDate)
+        .lt('invoice_date', endDate)
+    }
 
     const [
       { data: invoicesData, error: invoicesError },
       { data: suppliersData, error: suppliersError },
       { data: pvData, error: pvError },
     ] = await Promise.all([
-      supabase
-        .from('invoices')
-        .select('*')
-        .gte('invoice_date', startDate)
-        .lt('invoice_date', endDate)
-        .order('invoice_date', { ascending: false }),
+      invoicesQuery,
       supabase.from('suppliers').select('*').order('name'),
       supabase.from('points_of_sale').select('*').order('name'),
     ])
@@ -97,7 +103,9 @@ export default function Fatture() {
 
       setMessage('Fattura aggiornata.')
     } else {
-      const { error } = await supabase.from('invoices').insert(payload)
+      const { error } = await supabase
+        .from('invoices')
+        .insert(payload)
 
       if (error) {
         setMessage(error.message)
@@ -126,7 +134,10 @@ export default function Fatture() {
     const conferma = window.confirm('Vuoi davvero cancellare questa fattura?')
     if (!conferma) return
 
-    const { error } = await supabase.from('invoices').delete().eq('id', id)
+    const { error } = await supabase
+      .from('invoices')
+      .delete()
+      .eq('id', id)
 
     if (error) {
       setMessage(error.message)
@@ -163,13 +174,16 @@ export default function Fatture() {
         <Link href="/">Home</Link>
       </div>
 
-      <div style={{ marginTop: 20 }}>
-        <label>Mese: </label>
+      <div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}>
+        <label>Mese:</label>
         <input
           type="month"
           value={selectedMonth}
           onChange={(e) => setSelectedMonth(e.target.value)}
         />
+        <button type="button" onClick={() => setSelectedMonth('')}>
+          Tutti
+        </button>
       </div>
 
       <form
@@ -229,7 +243,7 @@ export default function Fatture() {
       <h2 style={{ marginTop: 32 }}>Elenco fatture</h2>
 
       {rows.length === 0 ? (
-        <p>Nessuna fattura presente per il mese selezionato.</p>
+        <p>Nessuna fattura presente.</p>
       ) : (
         <table style={{ borderCollapse: 'collapse', width: '100%', marginTop: 12 }}>
           <thead>
@@ -272,15 +286,18 @@ export default function Fatture() {
   )
 }
 
-function getCurrentMonth() {
-  const now = new Date()
-  return now.toISOString().slice(0, 7)
-}
-
 function getNextMonth(month) {
-  const [y, m] = month.split('-').map(Number)
-  const date = new Date(y, m)
-  return date.toISOString().slice(0, 7)
+  const [year, mon] = month.split('-').map(Number)
+
+  let nextYear = year
+  let nextMonth = mon + 1
+
+  if (nextMonth === 13) {
+    nextMonth = 1
+    nextYear = year + 1
+  }
+
+  return `${nextYear}-${String(nextMonth).padStart(2, '0')}`
 }
 
 const th = {
