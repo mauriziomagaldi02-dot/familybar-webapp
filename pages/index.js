@@ -6,7 +6,6 @@ export default function Home() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [user, setUser] = useState(null)
-  const [pointsOfSale, setPointsOfSale] = useState([])
   const [message, setMessage] = useState('')
 
   useEffect(() => {
@@ -22,24 +21,6 @@ export default function Home() {
 
     return () => subscription.unsubscribe()
   }, [])
-
-  useEffect(() => {
-    if (user) loadPointsOfSale()
-  }, [user])
-
-  async function loadPointsOfSale() {
-    const { data, error } = await supabase
-      .from('points_of_sale')
-      .select('*')
-      .order('name')
-
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-
-    setPointsOfSale(data || [])
-  }
 
   async function handleLogin(e) {
     e.preventDefault()
@@ -59,13 +40,11 @@ export default function Home() {
     await supabase.auth.signOut()
   }
 
-  // 🔴 LOGIN (SOLO LOGO)
   if (!user) {
     return (
       <div style={pageStyle}>
         <div style={loginWrapStyle}>
           <div style={loginCardStyle}>
-
             <div style={{ marginBottom: 28, textAlign: 'center' }}>
               <img
                 src="/logo.png"
@@ -106,14 +85,11 @@ export default function Home() {
     )
   }
 
-  // 🔵 HOME
   return (
     <div style={pageStyle}>
       <div style={containerStyle}>
-
         <div style={topBarStyle}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-
             <img
               src="/logo.png"
               alt="logo"
@@ -124,12 +100,8 @@ export default function Home() {
             />
 
             <div>
-              <h1 style={titleStyle}>Familybar</h1>
-              <p style={subtitleStyle}>
-                Accesso effettuato come: {user.email}
-              </p>
+              <h1 style={titleStyle}>Business Analytics</h1>
             </div>
-
           </div>
 
           <button onClick={handleLogout} style={logoutButtonStyle}>
@@ -139,24 +111,7 @@ export default function Home() {
 
         {message && <p style={errorTextStyle}>{message}</p>}
 
-        <div style={gridStyle}>
-
-          <div style={cardStyle}>
-            <h2 style={sectionTitleStyle}>Punti vendita</h2>
-
-            {pointsOfSale.length === 0 ? (
-              <p style={emptyTextStyle}>Nessun punto vendita presente.</p>
-            ) : (
-              <ul style={pvListStyle}>
-                {pointsOfSale.map((pv) => (
-                  <li key={pv.id} style={pvItemStyle}>
-                    {pv.name}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
+        <div style={singleCardWrapStyle}>
           <div style={cardStyle}>
             <h2 style={sectionTitleStyle}>Menu</h2>
 
@@ -172,7 +127,6 @@ export default function Home() {
               <MenuLink href="/analisi" label="Analisi avanzata" />
             </div>
           </div>
-
         </div>
       </div>
     </div>
@@ -187,8 +141,6 @@ function MenuLink({ href, label }) {
     </Link>
   )
 }
-
-/* STILI */
 
 const pageStyle = {
   minHeight: '100vh',
@@ -223,10 +175,14 @@ const loginCardStyle = {
 const topBarStyle = {
   display: 'flex',
   justifyContent: 'space-between',
-  alignItems: 'flex-start',
+  alignItems: 'center',
   gap: 16,
   marginBottom: 24,
   flexWrap: 'wrap',
+}
+
+const singleCardWrapStyle = {
+  display: 'block',
 }
 
 const cardStyle = {
@@ -235,12 +191,6 @@ const cardStyle = {
   borderRadius: 16,
   padding: 24,
   boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
-}
-
-const gridStyle = {
-  display: 'grid',
-  gridTemplateColumns: '1fr 1.4fr',
-  gap: 24,
 }
 
 const linksGridStyle = {
@@ -253,12 +203,6 @@ const titleStyle = {
   margin: 0,
   fontSize: 28,
   color: '#111827',
-}
-
-const subtitleStyle = {
-  margin: '6px 0 0 0',
-  color: '#6b7280',
-  fontSize: 14,
 }
 
 const sectionTitleStyle = {
@@ -296,24 +240,6 @@ const errorTextStyle = {
   color: '#b91c1c',
 }
 
-const emptyTextStyle = {
-  color: '#6b7280',
-}
-
-const pvListStyle = {
-  listStyle: 'none',
-  padding: 0,
-  margin: 0,
-  display: 'grid',
-  gap: 10,
-}
-
-const pvItemStyle = {
-  padding: '10px',
-  border: '1px solid #e5e7eb',
-  borderRadius: 10,
-}
-
 const menuLinkStyle = {
   display: 'flex',
   justifyContent: 'space-between',
@@ -322,6 +248,7 @@ const menuLinkStyle = {
   borderRadius: 10,
   textDecoration: 'none',
   color: '#111827',
+  fontWeight: 600,
 }
 
 const menuArrowStyle = {
