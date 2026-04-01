@@ -2,19 +2,22 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
 
+const initialForm = {
+  cost_date: '',
+  description: '',
+  amount: '',
+  point_of_sale_id: '',
+  is_general: false,
+  note: '',
+}
+
 export default function SpeseManuali() {
   const [user, setUser] = useState(null)
   const [rows, setRows] = useState([])
   const [pointsOfSale, setPointsOfSale] = useState([])
-  const [form, setForm] = useState({
-    cost_date: '',
-    description: '',
-    amount: '',
-    point_of_sale_id: '',
-    is_general: false,
-    note: '',
-  })
+  const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
+  const [editingId, setEditingId] = useState(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -65,24 +68,69 @@ export default function SpeseManuali() {
       note: form.note || null,
     }
 
-    const { error } = await supabase.from('manual_costs').insert(payload)
+    if (editingId) {
+      const { error } = await supabase
+        .from('manual_costs')
+        .update(payload)
+        .eq('id', editingId)
+
+      if (error) {
+        setMessage(error.message)
+        return
+      }
+
+      setMessage('Spesa manuale aggiornata.')
+    } else {
+      const { error } = await supabase.from('manual_costs').insert(payload)
+
+      if (error) {
+        setMessage(error.message)
+        return
+      }
+
+      setMessage('Spesa manuale inserita.')
+    }
+
+    resetForm()
+    loadData()
+  }
+
+  function handleEdit(row) {
+    setEditingId(row.id)
+    setForm({
+      cost_date: row.cost_date || '',
+      description: row.description || '',
+      amount: row.amount ?? '',
+      point_of_sale_id: row.point_of_sale_id || '',
+      is_general: !!row.is_general,
+      note: row.note || '',
+    })
+    setMessage('')
+  }
+
+  async function handleDelete(id) {
+    const conferma = window.confirm('Vuoi davvero cancellare questa spesa?')
+
+    if (!conferma) return
+
+    const { error } = await supabase.from('manual_costs').delete().eq('id', id)
 
     if (error) {
       setMessage(error.message)
       return
     }
 
-    setForm({
-      cost_date: '',
-      description: '',
-      amount: '',
-      point_of_sale_id: '',
-      is_general: false,
-      note: '',
-    })
+    if (editingId === id) {
+      resetForm()
+    }
 
-    setMessage('Spesa manuale inserita.')
+    setMessage('Spesa manuale cancellata.')
     loadData()
+  }
+
+  function resetForm() {
+    setForm(initialForm)
+    setEditingId(null)
   }
 
   if (!user) {
@@ -162,7 +210,17 @@ export default function SpeseManuali() {
           onChange={(e) => setForm({ ...form, note: e.target.value })}
         />
 
-        <button type="submit">Salva</button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="submit">
+            {editingId ? 'Aggiorna' : 'Salva'}
+          </button>
+
+          {editingId && (
+            <button type="button" onClick={resetForm}>
+              Annulla modifica
+            </button>
+          )}
+        </div>
       </form>
 
       {message && <p style={{ marginTop: 12 }}>{message}</p>}
@@ -181,6 +239,7 @@ export default function SpeseManuali() {
               <th style={th}>PV</th>
               <th style={th}>Generale</th>
               <th style={th}>Note</th>
+              <th style={th}>Azioni</th>
             </tr>
           </thead>
           <tbody>
@@ -195,6 +254,16 @@ export default function SpeseManuali() {
                   <td style={td}>{row.is_general ? '' : pv?.name || ''}</td>
                   <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
                   <td style={td}>{row.note || ''}</td>
+                  <td style={td}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="button" onClick={() => handleEdit(row)}>
+                        Modifica
+                      </button>
+                      <button type="button" onClick={() => handleDelete(row.id)}>
+                        Cancella
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               )
             })}
