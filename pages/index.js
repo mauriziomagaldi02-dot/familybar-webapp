@@ -131,11 +131,10 @@ export default function Home() {
         </ul>
       )}
 
-      <div style={{ marginTop: 24 }}>
-        <Link href="/fatture">Vai a Fatture</Link>
-      </div>
-<div style={{ marginTop: 12 }}>
+      <div style={{ marginTop: 24, display: 'grid', gap: 12, maxWidth: 220 }}>
+  <Link href="/fatture">Vai a Fatture</Link>
   <Link href="/ricavi">Vai a Ricavi</Link>
+  <Link href="/costi-personale">Costi personale</Link>
 </div>
 
       {message && <p style={{ marginTop: 16 }}>{message}</p>}
