@@ -55,22 +55,6 @@ export default function Home() {
     }
   }
 
-  async function handleRegister(e) {
-    e.preventDefault()
-    setMessage('')
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    })
-
-    if (error) {
-      setMessage(error.message)
-    } else {
-      setMessage('Utente creato. Se richiesto, conferma la mail.')
-    }
-  }
-
   async function handleLogout() {
     await supabase.auth.signOut()
   }
@@ -81,7 +65,7 @@ export default function Home() {
         <h1>Familybar Web App</h1>
         <p>Accesso utenti</p>
 
-        <form style={{ display: 'grid', gap: 12 }}>
+        <form onSubmit={handleLogin} style={{ display: 'grid', gap: 12 }}>
           <input
             type="email"
             placeholder="Email"
@@ -97,12 +81,8 @@ export default function Home() {
             style={{ padding: 10 }}
           />
 
-          <button onClick={handleLogin} style={{ padding: 10 }}>
+          <button type="submit" style={{ padding: 10 }}>
             Accedi
-          </button>
-
-          <button type="button" onClick={handleRegister} style={{ padding: 10 }}>
-            Crea utente
           </button>
         </form>
 
@@ -115,6 +95,7 @@ export default function Home() {
     <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
       <h1>Familybar Web App</h1>
       <p>Accesso effettuato come: {user.email}</p>
+
       <button onClick={handleLogout} style={{ padding: 10, marginTop: 10 }}>
         Esci
       </button>
@@ -131,17 +112,17 @@ export default function Home() {
         </ul>
       )}
 
-<div style={{ marginTop: 24, display: 'grid', gap: 12, maxWidth: 220 }}>
-  <Link href="/fatture">Vai a Fatture</Link>
-  <Link href="/ricavi">Vai a Ricavi</Link>
-  <Link href="/costi-personale">Costi personale</Link>
-  <Link href="/spese-manuali">Spese manuali</Link>
-  <Link href="/dashboard">Dashboard</Link>
-  <Link href="/mappature">Mappature fornitori</Link>
-  <Link href="/import-xml">Import XML</Link>
-  <Link href="/fornitori">Fornitori</Link>
-  <Link href="/analisi">Analisi avanzata</Link>
-</div>
+      <div style={{ marginTop: 24, display: 'grid', gap: 12, maxWidth: 220 }}>
+        <Link href="/fatture">Vai a Fatture</Link>
+        <Link href="/ricavi">Vai a Ricavi</Link>
+        <Link href="/costi-personale">Costi personale</Link>
+        <Link href="/spese-manuali">Spese manuali</Link>
+        <Link href="/dashboard">Dashboard</Link>
+        <Link href="/mappature">Mappature fornitori</Link>
+        <Link href="/import-xml">Import XML</Link>
+        <Link href="/fornitori">Fornitori</Link>
+        <Link href="/analisi">Analisi avanzata</Link>
+      </div>
 
       {message && <p style={{ marginTop: 16 }}>{message}</p>}
     </div>
