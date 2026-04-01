@@ -111,16 +111,6 @@ export default function Home() {
 
         {message && <p style={errorTextStyle}>{message}</p>}
 
-        <div style={heroCardStyle}>
-          <div>
-            <p style={heroEyebrowStyle}>Gestionale interno</p>
-            <h2 style={heroTitleStyle}>Accesso rapido ai moduli</h2>
-            <p style={heroTextStyle}>
-              Seleziona un’area per inserire dati, controllare risultati e analizzare le performance.
-            </p>
-          </div>
-        </div>
-
         <div style={menuSectionStyle}>
           <MenuLink href="/dashboard" label="Dashboard" icon="📊" note="Sintesi mensile e semafori" />
           <MenuLink href="/analisi" label="Analisi avanzata" icon="📈" note="Pareto, grafici e confronto dati" />
