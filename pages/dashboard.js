@@ -9,6 +9,12 @@ export default function Dashboard() {
   const [message, setMessage] = useState('')
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth())
   const [selectedPv, setSelectedPv] = useState('')
+  const [trendMonths, setTrendMonths] = useState(6)
+
+  const [revenues, setRevenues] = useState([])
+  const [invoices, setInvoices] = useState([])
+  const [staffCosts, setStaffCosts] = useState([])
+  const [manualCosts, setManualCosts] = useState([])
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -26,7 +32,11 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (user) loadData()
-  }, [user, selectedMonth, selectedPv])
+  }, [user])
+
+  useEffect(() => {
+    buildDashboardRows()
+  }, [revenues, invoices, staffCosts, manualCosts, pointsOfSale, selectedMonth, selectedPv])
 
   async function loadData() {
     setMessage('')
@@ -58,24 +68,30 @@ export default function Dashboard() {
     }
 
     setPointsOfSale(pvData || [])
+    setRevenues(revenuesData || [])
+    setInvoices(invoicesData || [])
+    setStaffCosts(staffData || [])
+    setManualCosts(manualCostsData || [])
+  }
 
-    const filteredRevenues = (revenuesData || []).filter((r) =>
+  function buildDashboardRows() {
+    const filteredRevenues = (revenues || []).filter((r) =>
       isInSelectedMonth(r.date, selectedMonth)
     )
 
-    const filteredInvoices = (invoicesData || []).filter((i) =>
+    const filteredInvoices = (invoices || []).filter((i) =>
       isInSelectedMonth(i.invoice_date, selectedMonth)
     )
 
-    const filteredStaff = (staffData || []).filter((s) =>
+    const filteredStaff = (staffCosts || []).filter((s) =>
       isInSelectedMonth(s.period_month, selectedMonth)
     )
 
-    const filteredManualCosts = (manualCostsData || []).filter((c) =>
+    const filteredManualCosts = (manualCosts || []).filter((c) =>
       isInSelectedMonth(c.cost_date, selectedMonth)
     )
 
-    const filteredPvData = (pvData || []).filter((pv) =>
+    const filteredPvData = (pointsOfSale || []).filter((pv) =>
       selectedPv ? pv.id === selectedPv : true
     )
 
@@ -170,6 +186,130 @@ export default function Dashboard() {
     )
   }, [rows])
 
+  const trendRows = useMemo(() => {
+    const monthKeys = getLastMonths(selectedMonth, trendMonths)
+
+    return monthKeys.map((monthKey, index) => {
+      const revenuesInMonth = (revenues || []).filter(
+        (r) =>
+          isInSelectedMonth(r.date, monthKey) &&
+          (selectedPv ? r.point_of_sale_id === selectedPv : true)
+      )
+
+      const invoicesInMonth = (invoices || []).filter(
+        (i) =>
+          isInSelectedMonth(i.invoice_date, monthKey) &&
+          (selectedPv ? i.point_of_sale_id === selectedPv : true)
+      )
+
+      const staffInMonth = (staffCosts || []).filter(
+        (s) =>
+          isInSelectedMonth(s.period_month, monthKey) &&
+          (selectedPv ? s.point_of_sale_id === selectedPv : true)
+      )
+
+      const manualCostsInMonth = (manualCosts || []).filter((c) =>
+        isInSelectedMonth(c.cost_date, monthKey)
+      )
+
+      const filteredPvData = (pointsOfSale || []).filter((pv) =>
+        selectedPv ? pv.id === selectedPv : true
+      )
+
+      const totalRicaviMese = (revenues || [])
+        .filter((r) => isInSelectedMonth(r.date, monthKey))
+        .reduce((sum, r) => sum + Number(r.amount || 0), 0)
+
+      const ricavi = revenuesInMonth.reduce((sum, r) => sum + Number(r.amount || 0), 0)
+
+      const costiFattureImponibile = invoicesInMonth.reduce(
+        (sum, i) => sum + Number(i.amount || 0),
+        0
+      )
+
+      const costoPersonale = staffInMonth.reduce(
+        (sum, s) => sum + Number(s.amount || 0),
+        0
+      )
+
+      const ore = staffInMonth.reduce(
+        (sum, s) => sum + Number(s.worked_hours || 0),
+        0
+      )
+
+      const speseManualiDirette = manualCostsInMonth
+        .filter((c) => !c.is_general && (selectedPv ? c.point_of_sale_id === selectedPv : true))
+        .reduce((sum, c) => sum + Number(c.amount || 0), 0)
+
+      const generalManualCosts = manualCostsInMonth.filter((c) => c.is_general === true)
+
+      const quotaGenerali = generalManualCosts.reduce((sum, c) => {
+        const amount = Number(c.amount || 0)
+
+        if (selectedPv) {
+          if (totalRicaviMese > 0) {
+            return sum + amount * (ricavi / totalRicaviMese)
+          }
+
+          const numeroPv = filteredPvData.length || 1
+          return sum + amount / numeroPv
+        }
+
+        return sum + amount
+      }, 0)
+
+      const costiTotali =
+        costiFattureImponibile + costoPersonale + speseManualiDirette + quotaGenerali
+
+      const margine = ricavi - costiTotali
+      const marginePerc = ricavi > 0 ? (margine / ricavi) * 100 : 0
+      const produttivitaOraria = ore > 0 ? ricavi / ore : 0
+
+      const prev = index > 0 ? monthKeys[index - 1] : null
+
+      let trendRicaviPerc = null
+      let trendMarginePerc = null
+
+      if (prev) {
+        const prevData = calculateMonthSnapshot({
+          monthKey: prev,
+          selectedPv,
+          revenues,
+          invoices,
+          staffCosts,
+          manualCosts,
+          pointsOfSale,
+        })
+
+        trendRicaviPerc =
+          prevData.ricavi !== 0
+            ? ((ricavi - prevData.ricavi) / prevData.ricavi) * 100
+            : null
+
+        trendMarginePerc =
+          prevData.margine !== 0
+            ? ((margine - prevData.margine) / prevData.margine) * 100
+            : null
+      }
+
+      return {
+        monthKey,
+        ricavi,
+        costiFattureImponibile,
+        costoPersonale,
+        speseManualiDirette,
+        quotaGenerali,
+        costiTotali,
+        margine,
+        marginePerc,
+        ore,
+        produttivitaOraria,
+        trendRicaviPerc,
+        trendMarginePerc,
+      }
+    })
+  }, [revenues, invoices, staffCosts, manualCosts, pointsOfSale, selectedMonth, selectedPv, trendMonths])
+
   if (!user) {
     return (
       <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
@@ -213,6 +353,15 @@ export default function Dashboard() {
               {pv.name}
             </option>
           ))}
+        </select>
+
+        <label>Trend</label>
+        <select
+          value={trendMonths}
+          onChange={(e) => setTrendMonths(Number(e.target.value))}
+        >
+          <option value={6}>Ultimi 6 mesi</option>
+          <option value={12}>Ultimi 12 mesi</option>
         </select>
       </div>
 
@@ -319,8 +468,157 @@ export default function Dashboard() {
           </tr>
         </tbody>
       </table>
+
+      <div style={{ marginTop: 32 }}>
+        <h2 style={{ marginBottom: 12 }}>Trend mensile</h2>
+
+        <table style={table}>
+          <thead>
+            <tr>
+              <th style={th}>Mese</th>
+              <th style={th}>Ricavi</th>
+              <th style={th}>Costi fatture</th>
+              <th style={th}>Costo personale</th>
+              <th style={th}>Spese manuali dirette</th>
+              <th style={th}>Quota generali</th>
+              <th style={th}>Costi totali</th>
+              <th style={th}>Margine €</th>
+              <th style={th}>Margine %</th>
+              <th style={th}>Ore</th>
+              <th style={th}>Produttività €/h</th>
+              <th style={th}>Trend ricavi</th>
+              <th style={th}>Trend margine</th>
+            </tr>
+          </thead>
+          <tbody>
+            {trendRows.map((row) => (
+              <tr key={row.monthKey}>
+                <td style={td}>{formatMonthLabel(row.monthKey)}</td>
+                <td style={td}>{formatEuro(row.ricavi)}</td>
+                <td style={td}>{formatEuro(row.costiFattureImponibile)}</td>
+                <td style={td}>{formatEuro(row.costoPersonale)}</td>
+                <td style={td}>{formatEuro(row.speseManualiDirette)}</td>
+                <td style={td}>{formatEuro(row.quotaGenerali)}</td>
+                <td style={td}>{formatEuro(row.costiTotali)}</td>
+                <td style={{ ...td, ...getMargineStyle(row.margine), fontWeight: 700 }}>
+                  {formatEuro(row.margine)}
+                </td>
+                <td style={td}>{formatPercent(row.marginePerc)}</td>
+                <td style={td}>{formatNumber(row.ore)}</td>
+                <td style={{ ...td, ...getProduttivitaStyle(row.produttivitaOraria) }}>
+                  {formatEuro(row.produttivitaOraria)}
+                </td>
+                <td style={{ ...td, ...getTrendStyle(row.trendRicaviPerc) }}>
+                  {formatTrend(row.trendRicaviPerc)}
+                </td>
+                <td style={{ ...td, ...getTrendStyle(row.trendMarginePerc) }}>
+                  {formatTrend(row.trendMarginePerc)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
+}
+
+function calculateMonthSnapshot({
+  monthKey,
+  selectedPv,
+  revenues,
+  invoices,
+  staffCosts,
+  manualCosts,
+  pointsOfSale,
+}) {
+  const revenuesInMonth = (revenues || []).filter(
+    (r) =>
+      isInSelectedMonth(r.date, monthKey) &&
+      (selectedPv ? r.point_of_sale_id === selectedPv : true)
+  )
+
+  const invoicesInMonth = (invoices || []).filter(
+    (i) =>
+      isInSelectedMonth(i.invoice_date, monthKey) &&
+      (selectedPv ? i.point_of_sale_id === selectedPv : true)
+  )
+
+  const staffInMonth = (staffCosts || []).filter(
+    (s) =>
+      isInSelectedMonth(s.period_month, monthKey) &&
+      (selectedPv ? s.point_of_sale_id === selectedPv : true)
+  )
+
+  const manualCostsInMonth = (manualCosts || []).filter((c) =>
+    isInSelectedMonth(c.cost_date, monthKey)
+  )
+
+  const filteredPvData = (pointsOfSale || []).filter((pv) =>
+    selectedPv ? pv.id === selectedPv : true
+  )
+
+  const totalRicaviMese = (revenues || [])
+    .filter((r) => isInSelectedMonth(r.date, monthKey))
+    .reduce((sum, r) => sum + Number(r.amount || 0), 0)
+
+  const ricavi = revenuesInMonth.reduce((sum, r) => sum + Number(r.amount || 0), 0)
+
+  const costiFattureImponibile = invoicesInMonth.reduce(
+    (sum, i) => sum + Number(i.amount || 0),
+    0
+  )
+
+  const costoPersonale = staffInMonth.reduce(
+    (sum, s) => sum + Number(s.amount || 0),
+    0
+  )
+
+  const ore = staffInMonth.reduce(
+    (sum, s) => sum + Number(s.worked_hours || 0),
+    0
+  )
+
+  const speseManualiDirette = manualCostsInMonth
+    .filter((c) => !c.is_general && (selectedPv ? c.point_of_sale_id === selectedPv : true))
+    .reduce((sum, c) => sum + Number(c.amount || 0), 0)
+
+  const generalManualCosts = manualCostsInMonth.filter((c) => c.is_general === true)
+
+  const quotaGenerali = generalManualCosts.reduce((sum, c) => {
+    const amount = Number(c.amount || 0)
+
+    if (selectedPv) {
+      if (totalRicaviMese > 0) {
+        return sum + amount * (ricavi / totalRicaviMese)
+      }
+
+      const numeroPv = filteredPvData.length || 1
+      return sum + amount / numeroPv
+    }
+
+    return sum + amount
+  }, 0)
+
+  const costiTotali =
+    costiFattureImponibile + costoPersonale + speseManualiDirette + quotaGenerali
+
+  const margine = ricavi - costiTotali
+  const marginePerc = ricavi > 0 ? (margine / ricavi) * 100 : 0
+  const produttivitaOraria = ore > 0 ? ricavi / ore : 0
+
+  return {
+    ricavi,
+    costiFattureImponibile,
+    costoPersonale,
+    speseManualiDirette,
+    quotaGenerali,
+    costiTotali,
+    margine,
+    marginePerc,
+    ore,
+    produttivitaOraria,
+  }
 }
 
 function isInSelectedMonth(value, selectedMonth) {
@@ -333,6 +631,26 @@ function getCurrentMonth() {
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
   return `${year}-${month}`
+}
+
+function getLastMonths(endMonth, count) {
+  const [year, month] = String(endMonth).split('-').map(Number)
+  const result = []
+
+  for (let i = count - 1; i >= 0; i--) {
+    const date = new Date(year, month - 1 - i, 1)
+    const y = date.getFullYear()
+    const m = String(date.getMonth() + 1).padStart(2, '0')
+    result.push(`${y}-${m}`)
+  }
+
+  return result
+}
+
+function formatMonthLabel(monthKey) {
+  const [year, month] = monthKey.split('-')
+  const months = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu', 'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic']
+  return `${months[Number(month) - 1]} ${year}`
 }
 
 function getOverallStatus(row) {
@@ -378,6 +696,13 @@ function getCostoPersonalePercStyle(value) {
   return { background: '#f2dede' }
 }
 
+function getTrendStyle(value) {
+  if (value === null || value === undefined) return {}
+  if (Number(value) > 2) return { background: '#dff0d8', fontWeight: 700 }
+  if (Number(value) < -2) return { background: '#f2dede', fontWeight: 700 }
+  return { background: '#fcf8e3', fontWeight: 700 }
+}
+
 function badgeStyle(status) {
   if (status === 'ok') {
     return {
@@ -418,6 +743,12 @@ function formatPercent(value) {
 
 function formatNumber(value) {
   return Number(value || 0).toFixed(2)
+}
+
+function formatTrend(value) {
+  if (value === null || value === undefined) return 'n.d.'
+  const symbol = value > 2 ? '↑' : value < -2 ? '↓' : '→'
+  return `${symbol} ${Number(value).toFixed(2)}%`
 }
 
 const table = {
