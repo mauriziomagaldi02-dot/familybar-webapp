@@ -16,6 +16,7 @@ export default function CostiPersonale() {
   const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
   const [editingId, setEditingId] = useState(null)
+  const [selectedMonth, setSelectedMonth] = useState('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -33,13 +34,22 @@ export default function CostiPersonale() {
 
   useEffect(() => {
     if (user) loadData()
-  }, [user])
+  }, [user, selectedMonth])
 
   async function loadData() {
     setMessage('')
 
+    let staffQuery = supabase
+      .from('staff_costs')
+      .select('*')
+      .order('period_month', { ascending: false })
+
+    if (selectedMonth) {
+      staffQuery = staffQuery.eq('period_month', selectedMonth)
+    }
+
     const [{ data, error }, { data: pvData, error: pvError }] = await Promise.all([
-      supabase.from('staff_costs').select('*').order('period_month', { ascending: false }),
+      staffQuery,
       supabase.from('points_of_sale').select('*').order('name'),
     ])
 
@@ -76,9 +86,7 @@ export default function CostiPersonale() {
 
       setMessage('Costo personale aggiornato.')
     } else {
-      const { error } = await supabase
-        .from('staff_costs')
-        .insert(payload)
+      const { error } = await supabase.from('staff_costs').insert(payload)
 
       if (error) {
         setMessage(error.message)
@@ -107,19 +115,14 @@ export default function CostiPersonale() {
     const conferma = window.confirm('Vuoi davvero cancellare questo costo del personale?')
     if (!conferma) return
 
-    const { error } = await supabase
-      .from('staff_costs')
-      .delete()
-      .eq('id', id)
+    const { error } = await supabase.from('staff_costs').delete().eq('id', id)
 
     if (error) {
       setMessage(error.message)
       return
     }
 
-    if (editingId === id) {
-      resetForm()
-    }
+    if (editingId === id) resetForm()
 
     setMessage('Costo personale cancellato.')
     loadData()
@@ -144,6 +147,18 @@ export default function CostiPersonale() {
       <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
         <h1 style={{ margin: 0 }}>Costi personale</h1>
         <Link href="/">Home</Link>
+      </div>
+
+      <div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}>
+        <label>Mese:</label>
+        <input
+          type="month"
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(e.target.value)}
+        />
+        <button type="button" onClick={() => setSelectedMonth('')}>
+          Tutti
+        </button>
       </div>
 
       <form
