@@ -101,7 +101,6 @@ export default function Home() {
 
             <div>
               <h1 style={titleStyle}>Business Analytics</h1>
-              <p style={subtitleStyle}>Pannello operativo Familybar</p>
             </div>
           </div>
 
