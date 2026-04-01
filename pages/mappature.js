@@ -15,9 +15,10 @@ export default function Mappature() {
   const [suppliers, setSuppliers] = useState([])
   const [pointsOfSale, setPointsOfSale] = useState([])
   const [categories, setCategories] = useState([])
-  const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
+  const [form, setForm] = useState(initialForm)
   const [editingId, setEditingId] = useState(null)
+  const [isApplying, setIsApplying] = useState(false)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -55,10 +56,10 @@ export default function Mappature() {
     if (mappingsError || suppliersError || pvError || categoriesError) {
       setMessage(
         mappingsError?.message ||
-        suppliersError?.message ||
-        pvError?.message ||
-        categoriesError?.message ||
-        'Errore caricamento dati'
+          suppliersError?.message ||
+          pvError?.message ||
+          categoriesError?.message ||
+          'Errore caricamento dati'
       )
       return
     }
@@ -145,6 +146,79 @@ export default function Mappature() {
     loadData()
   }
 
+  async function handleApplyMappings() {
+    setMessage('')
+    setIsApplying(true)
+
+    try {
+      const { data: mappings, error: mappingsError } = await supabase
+        .from('supplier_mappings')
+        .select('*')
+
+      if (mappingsError) throw new Error(mappingsError.message)
+
+      const { data: invoices, error: invoicesError } = await supabase
+        .from('invoices')
+        .select('*')
+
+      if (invoicesError) throw new Error(invoicesError.message)
+
+      if (!mappings || mappings.length === 0) {
+        setMessage('Nessuna mappatura da applicare.')
+        setIsApplying(false)
+        return
+      }
+
+      if (!invoices || invoices.length === 0) {
+        setMessage('Nessuna fattura presente.')
+        setIsApplying(false)
+        return
+      }
+
+      const mappingsBySupplier = new Map()
+      for (const mapping of mappings) {
+        if (mapping.supplier_id) {
+          mappingsBySupplier.set(mapping.supplier_id, mapping)
+        }
+      }
+
+      const invoicesToUpdate = invoices.filter((inv) => mappingsBySupplier.has(inv.supplier_id))
+
+      if (invoicesToUpdate.length === 0) {
+        setMessage('Nessuna fattura compatibile con le mappature.')
+        setIsApplying(false)
+        return
+      }
+
+      let updatedCount = 0
+
+      for (const invoice of invoicesToUpdate) {
+        const mapping = mappingsBySupplier.get(invoice.supplier_id)
+
+        const payload = {
+          point_of_sale_id: mapping.is_general ? null : mapping.point_of_sale_id || null,
+          category_id: mapping.category_id || null,
+          is_general: !!mapping.is_general,
+        }
+
+        const { error } = await supabase
+          .from('invoices')
+          .update(payload)
+          .eq('id', invoice.id)
+
+        if (error) throw new Error(error.message)
+
+        updatedCount += 1
+      }
+
+      setMessage(`Mappature applicate a ${updatedCount} fatture.`)
+    } catch (err) {
+      setMessage(err.message || 'Errore applicazione mappature')
+    } finally {
+      setIsApplying(false)
+    }
+  }
+
   function resetForm() {
     setForm(initialForm)
     setEditingId(null)
@@ -176,6 +250,12 @@ export default function Mappature() {
       <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
         <h1 style={{ margin: 0 }}>Mappature fornitori</h1>
         <Link href="/">Home</Link>
+      </div>
+
+      <div style={{ marginTop: 20 }}>
+        <button type="button" onClick={handleApplyMappings} disabled={isApplying}>
+          {isApplying ? 'Applicazione in corso...' : 'Applica mappature alle fatture'}
+        </button>
       </div>
 
       <form
