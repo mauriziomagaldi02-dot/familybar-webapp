@@ -31,9 +31,8 @@ export default function ImportXml() {
   const suppliersByNormalizedName = useMemo(() => {
     const map = new Map()
     for (const s of suppliers) {
-      if (s.name) {
-        map.set(normalizeSupplierName(s.name), s)
-      }
+      const key = s.normalized_name || normalizeSupplierName(s.name)
+      if (key) map.set(key, s)
     }
     return map
   }, [suppliers])
@@ -41,9 +40,7 @@ export default function ImportXml() {
   const mappingsBySupplierId = useMemo(() => {
     const map = new Map()
     for (const m of mappings) {
-      if (m.supplier_id) {
-        map.set(m.supplier_id, m)
-      }
+      if (m.supplier_id) map.set(m.supplier_id, m)
     }
     return map
   }, [mappings])
@@ -88,8 +85,9 @@ export default function ImportXml() {
         const text = await file.text()
         const parsed = parseFatturaXml(text, file.name)
 
-        const matchedSupplier = parsed.supplier_name
-          ? suppliersByNormalizedName.get(normalizeSupplierName(parsed.supplier_name))
+        const normalizedSupplier = normalizeSupplierName(parsed.supplier_name)
+        const matchedSupplier = normalizedSupplier
+          ? suppliersByNormalizedName.get(normalizedSupplier)
           : null
 
         const mapping = matchedSupplier
@@ -98,6 +96,7 @@ export default function ImportXml() {
 
         parsedRows.push({
           ...parsed,
+          normalized_supplier_name: normalizedSupplier,
           supplier_id: matchedSupplier?.id || null,
           matched_supplier_name: matchedSupplier?.name || '',
           point_of_sale_id: mapping?.is_general ? null : mapping?.point_of_sale_id || null,
@@ -128,10 +127,19 @@ export default function ImportXml() {
     try {
       let inserted = 0
       let createdSuppliers = 0
+      let duplicates = 0
       let skipped = 0
 
-      let localSuppliers = [...suppliers]
-      let localMappings = [...mappings]
+      const localSuppliersMap = new Map()
+      for (const s of suppliers) {
+        const key = s.normalized_name || normalizeSupplierName(s.name)
+        if (key) localSuppliersMap.set(key, s)
+      }
+
+      const localMappingsMap = new Map()
+      for (const m of mappings) {
+        if (m.supplier_id) localMappingsMap.set(m.supplier_id, m)
+      }
 
       for (const row of previewRows) {
         if (row.error) {
@@ -140,23 +148,50 @@ export default function ImportXml() {
         }
 
         let supplierId = row.supplier_id
-        let supplierName = row.supplier_name || ''
+        const supplierName = row.supplier_name || ''
+        const normalizedName =
+          row.normalized_supplier_name || normalizeSupplierName(supplierName)
 
-        if (!supplierId && supplierName) {
-          const { data: newSupplier, error: supplierError } = await supabase
-            .from('suppliers')
-            .insert({ name: supplierName })
-            .select()
-            .single()
+        if (!supplierId && normalizedName) {
+          const existingLocalSupplier = localSuppliersMap.get(normalizedName)
 
-          if (supplierError) {
-            skipped += 1
-            continue
+          if (existingLocalSupplier) {
+            supplierId = existingLocalSupplier.id
+          } else {
+            const { data: newSupplier, error: supplierError } = await supabase
+              .from('suppliers')
+              .insert({
+                name: supplierName,
+                normalized_name: normalizedName,
+              })
+              .select()
+              .single()
+
+            if (supplierError) {
+              if (supplierError.code === '23505') {
+                const { data: existingSupplier } = await supabase
+                  .from('suppliers')
+                  .select('*')
+                  .eq('normalized_name', normalizedName)
+                  .single()
+
+                if (existingSupplier) {
+                  supplierId = existingSupplier.id
+                  localSuppliersMap.set(normalizedName, existingSupplier)
+                } else {
+                  skipped += 1
+                  continue
+                }
+              } else {
+                skipped += 1
+                continue
+              }
+            } else {
+              supplierId = newSupplier.id
+              localSuppliersMap.set(normalizedName, newSupplier)
+              createdSuppliers += 1
+            }
           }
-
-          supplierId = newSupplier.id
-          localSuppliers.push(newSupplier)
-          createdSuppliers += 1
         }
 
         if (!supplierId) {
@@ -164,8 +199,25 @@ export default function ImportXml() {
           continue
         }
 
-        const mapping =
-          localMappings.find((m) => m.supplier_id === supplierId) || null
+        const { data: existingInvoice, error: existingInvoiceError } = await supabase
+          .from('invoices')
+          .select('id')
+          .eq('supplier_id', supplierId)
+          .eq('invoice_number', row.invoice_number || null)
+          .eq('invoice_date', row.invoice_date || null)
+          .maybeSingle()
+
+        if (existingInvoiceError) {
+          skipped += 1
+          continue
+        }
+
+        if (existingInvoice) {
+          duplicates += 1
+          continue
+        }
+
+        const mapping = localMappingsMap.get(supplierId) || null
 
         const payload = {
           supplier_id: supplierId,
@@ -182,7 +234,11 @@ export default function ImportXml() {
         const { error } = await supabase.from('invoices').insert(payload)
 
         if (error) {
-          skipped += 1
+          if (error.code === '23505') {
+            duplicates += 1
+          } else {
+            skipped += 1
+          }
           continue
         }
 
@@ -190,7 +246,7 @@ export default function ImportXml() {
       }
 
       setMessage(
-        `Import completato. Fatture inserite: ${inserted}. Nuovi fornitori creati: ${createdSuppliers}. Saltate: ${skipped}.`
+        `Import completato. Inserite: ${inserted}. Nuovi fornitori creati: ${createdSuppliers}. Duplicati saltati: ${duplicates}. Saltate: ${skipped}.`
       )
 
       setPreviewRows([])
