@@ -256,8 +256,33 @@ export default function Dashboard() {
 
   if (!user) {
     return (
-      <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
-        <p>Devi accedere</p>
+return (
+  <div style={{ background: '#f6f7f9', minHeight: '100vh' }}>
+
+    <div style={{
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 16,
+      background: '#ffffff',
+      borderBottom: '1px solid #ddd'
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <img src="/logo.png" style={{ height: 40 }} />
+        <b>Business Analytics</b>
+      </div>
+
+      <button
+        onClick={async () => {
+          await supabase.auth.signOut()
+          window.location.href = '/'
+        }}
+      >
+        Logout
+      </button>
+    </div>
+
+    <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>        <p>Devi accedere</p>
         <Link href="/">Torna alla home</Link>
       </div>
     )
