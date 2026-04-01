@@ -136,6 +136,7 @@ export default function Home() {
   <Link href="/ricavi">Vai a Ricavi</Link>
   <Link href="/costi-personale">Costi personale</Link>
   <Link href="/dashboard">Dashboard</Link>
+        <Link href="/spese-manuali">Spese manuali</Link>
 </div>
 
       {message && <p style={{ marginTop: 16 }}>{message}</p>}
