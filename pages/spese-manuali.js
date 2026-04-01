@@ -17,12 +17,16 @@ export default function SpeseManuali() {
   const [message, setMessage] = useState('')
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user || null))
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user || null)
+    })
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null)
     })
+
     return () => subscription.unsubscribe()
   }, [])
 
@@ -31,10 +35,19 @@ export default function SpeseManuali() {
   }, [user])
 
   async function loadData() {
-    const [{ data: costs }, { data: pvData }] = await Promise.all([
-      supabase.from('manual_costs').select('*').order('cost_date', { ascending: false }),
-      supabase.from('points_of_sale').select('*').order('name'),
-    ])
+    setMessage('')
+
+    const [{ data: costs, error: costsError }, { data: pvData, error: pvError }] =
+      await Promise.all([
+        supabase.from('manual_costs').select('*').order('cost_date', { ascending: false }),
+        supabase.from('points_of_sale').select('*').order('name'),
+      ])
+
+    if (costsError || pvError) {
+      setMessage(costsError?.message || pvError?.message || 'Errore caricamento dati')
+      return
+    }
+
     setRows(costs || [])
     setPointsOfSale(pvData || [])
   }
@@ -83,10 +96,15 @@ export default function SpeseManuali() {
 
   return (
     <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
-      <h1>Spese manuali</h1>
-      <Link href="/">Home</Link>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+        <h1 style={{ margin: 0 }}>Spese manuali</h1>
+        <Link href="/">Home</Link>
+      </div>
 
-      <form onSubmit={handleSubmit} style={{ marginTop: 20, display: 'grid', gap: 10, maxWidth: 500 }}>
+      <form
+        onSubmit={handleSubmit}
+        style={{ marginTop: 20, display: 'grid', gap: 10, maxWidth: 500 }}
+      >
         <input
           type="date"
           value={form.cost_date}
@@ -112,7 +130,13 @@ export default function SpeseManuali() {
           <input
             type="checkbox"
             checked={form.is_general}
-            onChange={(e) => setForm({ ...form, is_general: e.target.checked })}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                is_general: e.target.checked,
+                point_of_sale_id: e.target.checked ? '' : form.point_of_sale_id,
+              })
+            }
           />
           {' '}Costo generale
         </label>
@@ -141,35 +165,42 @@ export default function SpeseManuali() {
         <button type="submit">Salva</button>
       </form>
 
-      {message && <p>{message}</p>}
+      {message && <p style={{ marginTop: 12 }}>{message}</p>}
 
       <h2 style={{ marginTop: 30 }}>Elenco</h2>
 
-      <table style={{ marginTop: 10, borderCollapse: 'collapse', width: '100%' }}>
-        <thead>
-          <tr>
-            <th style={th}>Data</th>
-            <th style={th}>Descrizione</th>
-            <th style={th}>Importo</th>
-            <th style={th}>PV</th>
-            <th style={th}>Generale</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const pv = pointsOfSale.find((p) => p.id === row.point_of_sale_id)
-            return (
-              <tr key={row.id}>
-                <td style={td}>{row.cost_date || ''}</td>
-                <td style={td}>{row.description || ''}</td>
-                <td style={td}>{row.amount || ''}</td>
-                <td style={td}>{pv?.name || ''}</td>
-                <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      {rows.length === 0 ? (
+        <p>Nessuna spesa manuale presente.</p>
+      ) : (
+        <table style={{ marginTop: 10, borderCollapse: 'collapse', width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={th}>Data</th>
+              <th style={th}>Descrizione</th>
+              <th style={th}>Importo</th>
+              <th style={th}>PV</th>
+              <th style={th}>Generale</th>
+              <th style={th}>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const pv = pointsOfSale.find((p) => p.id === row.point_of_sale_id)
+
+              return (
+                <tr key={row.id}>
+                  <td style={td}>{row.cost_date || ''}</td>
+                  <td style={td}>{row.description || ''}</td>
+                  <td style={td}>{row.amount || ''}</td>
+                  <td style={td}>{row.is_general ? '' : pv?.name || ''}</td>
+                  <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
+                  <td style={td}>{row.note || ''}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }
