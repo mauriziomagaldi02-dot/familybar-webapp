@@ -1,70 +1,61 @@
-import Link from 'next/link'
-
 export default function Header({ onLogout }) {
   return (
-    <div style={topBarStyle}>
+    <header style={headerStyle}>
       <div style={brandWrapStyle}>
         <img
           src="/logo.png"
           alt="logo"
-          style={{
-            height: 42,
-            objectFit: 'contain',
-          }}
+          style={logoStyle}
         />
-
-        <h1 style={titleStyle}>Business Analytics</h1>
+        <div style={titleStyle}>Business Analytics</div>
       </div>
 
-      <div style={{ display: 'flex', gap: 12 }}>
-        <Link href="/" style={navLinkStyle}>Home</Link>
-        <Link href="/dashboard" style={navLinkStyle}>Dashboard</Link>
-        <Link href="/analisi" style={navLinkStyle}>Analisi</Link>
-
-        {onLogout && (
-          <button onClick={onLogout} style={logoutButtonStyle}>
-            Esci
-          </button>
-        )}
-      </div>
-    </div>
+      <button onClick={onLogout} style={logoutButtonStyle}>
+        Logout
+      </button>
+    </header>
   )
 }
 
-/* STILI */
-
-const topBarStyle = {
+const headerStyle = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  marginBottom: 24,
-  flexWrap: 'wrap',
+  marginBottom: 28,
+  padding: '16px 20px',
+  background: '#ffffff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 18,
+  boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
 }
 
 const brandWrapStyle = {
   display: 'flex',
   alignItems: 'center',
-  gap: 12,
+  gap: 14,
+}
+
+const logoStyle = {
+  height: 42,
+  width: 'auto',
+  objectFit: 'contain',
+  display: 'block',
 }
 
 const titleStyle = {
-  margin: 0,
-  fontSize: 26,
+  fontSize: 22,
+  fontWeight: 700,
   color: '#111827',
-}
-
-const navLinkStyle = {
-  textDecoration: 'none',
-  color: '#111827',
-  fontWeight: 600,
-  padding: '8px 10px',
-  borderRadius: 8,
+  letterSpacing: '-0.02em',
 }
 
 const logoutButtonStyle = {
-  padding: '8px 12px',
-  border: '1px solid #d1d5db',
-  borderRadius: 10,
-  background: '#fff',
+  padding: '10px 16px',
+  border: 'none',
+  borderRadius: 12,
+  background: '#111827',
+  color: '#ffffff',
   cursor: 'pointer',
+  fontSize: 14,
+  fontWeight: 600,
 }
