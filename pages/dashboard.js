@@ -281,6 +281,7 @@ return (
         Logout
       </button>
     </div>
+          </div>
 
     <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>        <p>Devi accedere</p>
         <Link href="/">Torna alla home</Link>
