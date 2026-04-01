@@ -135,6 +135,7 @@ export default function Home() {
   <Link href="/fatture">Vai a Fatture</Link>
   <Link href="/ricavi">Vai a Ricavi</Link>
   <Link href="/costi-personale">Costi personale</Link>
+  <Link href="/dashboard">Dashboard</Link>
 </div>
 
       {message && <p style={{ marginTop: 16 }}>{message}</p>}
