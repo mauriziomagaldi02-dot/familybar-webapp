@@ -1,19 +1,22 @@
-export default function Header({ onLogout }) {
+import { supabase } from '../lib/supabaseClient'
+
+export default function Header() {
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    window.location.href = '/'
+  }
+
   return (
-    <header style={headerStyle}>
-      <div style={brandWrapStyle}>
-        <img
-          src="/logo.png"
-          alt="logo"
-          style={logoStyle}
-        />
-        <div style={titleStyle}>Business Analytics</div>
+    <div style={headerStyle}>
+      <div style={leftStyle}>
+        <img src="/logo.png" style={logoStyle} />
+        <span style={titleStyle}>Business Analytics</span>
       </div>
 
-      <button onClick={onLogout} style={logoutButtonStyle}>
+      <button onClick={handleLogout} style={buttonStyle}>
         Logout
       </button>
-    </header>
+    </div>
   )
 }
 
@@ -21,41 +24,31 @@ const headerStyle = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  marginBottom: 28,
-  padding: '16px 20px',
+  padding: '16px 24px',
   background: '#ffffff',
-  border: '1px solid #e5e7eb',
-  borderRadius: 18,
-  boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+  borderBottom: '1px solid #e5e7eb',
 }
 
-const brandWrapStyle = {
+const leftStyle = {
   display: 'flex',
   alignItems: 'center',
-  gap: 14,
+  gap: 12,
 }
 
 const logoStyle = {
-  height: 42,
-  width: 'auto',
-  objectFit: 'contain',
-  display: 'block',
+  height: 40,
 }
 
 const titleStyle = {
-  fontSize: 22,
+  fontSize: 20,
   fontWeight: 700,
-  color: '#111827',
-  letterSpacing: '-0.02em',
 }
 
-const logoutButtonStyle = {
-  padding: '10px 16px',
+const buttonStyle = {
+  padding: '8px 12px',
   border: 'none',
-  borderRadius: 12,
+  borderRadius: 8,
   background: '#111827',
-  color: '#ffffff',
+  color: '#fff',
   cursor: 'pointer',
-  fontSize: 14,
-  fontWeight: 600,
 }
