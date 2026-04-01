@@ -5,7 +5,9 @@ export default function Layout({ children, onLogout }) {
     <div style={pageStyle}>
       <div style={containerStyle}>
         <Header onLogout={onLogout} />
-        <div style={contentStyle}>{children}</div>
+        <div style={contentStyle}>
+          {children}
+        </div>
       </div>
     </div>
   )
