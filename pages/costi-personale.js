@@ -2,17 +2,20 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
 
+const initialForm = {
+  period_month: '',
+  amount: '',
+  worked_hours: '',
+  point_of_sale_id: '',
+}
+
 export default function CostiPersonale() {
   const [user, setUser] = useState(null)
-  const [dataList, setDataList] = useState([])
+  const [rows, setRows] = useState([])
   const [pointsOfSale, setPointsOfSale] = useState([])
-  const [form, setForm] = useState({
-    period_month: '',
-    amount: '',
-    worked_hours: '',
-    point_of_sale_id: '',
-  })
+  const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
+  const [editingId, setEditingId] = useState(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -33,12 +36,19 @@ export default function CostiPersonale() {
   }, [user])
 
   async function loadData() {
-    const [{ data }, { data: pvData }] = await Promise.all([
+    setMessage('')
+
+    const [{ data, error }, { data: pvData, error: pvError }] = await Promise.all([
       supabase.from('staff_costs').select('*').order('period_month', { ascending: false }),
       supabase.from('points_of_sale').select('*').order('name'),
     ])
 
-    setDataList(data || [])
+    if (error || pvError) {
+      setMessage(error?.message || pvError?.message || 'Errore caricamento dati')
+      return
+    }
+
+    setRows(data || [])
     setPointsOfSale(pvData || [])
   }
 
@@ -53,22 +63,71 @@ export default function CostiPersonale() {
       point_of_sale_id: form.point_of_sale_id || null,
     }
 
-    const { error } = await supabase.from('staff_costs').insert(payload)
+    if (editingId) {
+      const { error } = await supabase
+        .from('staff_costs')
+        .update(payload)
+        .eq('id', editingId)
+
+      if (error) {
+        setMessage(error.message)
+        return
+      }
+
+      setMessage('Costo personale aggiornato.')
+    } else {
+      const { error } = await supabase
+        .from('staff_costs')
+        .insert(payload)
+
+      if (error) {
+        setMessage(error.message)
+        return
+      }
+
+      setMessage('Costo personale inserito.')
+    }
+
+    resetForm()
+    loadData()
+  }
+
+  function handleEdit(row) {
+    setEditingId(row.id)
+    setForm({
+      period_month: row.period_month || '',
+      amount: row.amount ?? '',
+      worked_hours: row.worked_hours ?? '',
+      point_of_sale_id: row.point_of_sale_id || '',
+    })
+    setMessage('')
+  }
+
+  async function handleDelete(id) {
+    const conferma = window.confirm('Vuoi davvero cancellare questo costo del personale?')
+    if (!conferma) return
+
+    const { error } = await supabase
+      .from('staff_costs')
+      .delete()
+      .eq('id', id)
 
     if (error) {
       setMessage(error.message)
       return
     }
 
-    setForm({
-      period_month: '',
-      amount: '',
-      worked_hours: '',
-      point_of_sale_id: '',
-    })
+    if (editingId === id) {
+      resetForm()
+    }
 
-    setMessage('Costo personale inserito.')
+    setMessage('Costo personale cancellato.')
     loadData()
+  }
+
+  function resetForm() {
+    setForm(initialForm)
+    setEditingId(null)
   }
 
   if (!user) {
@@ -82,10 +141,15 @@ export default function CostiPersonale() {
 
   return (
     <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
-      <h1>Costi personale</h1>
-      <Link href="/">Home</Link>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+        <h1 style={{ margin: 0 }}>Costi personale</h1>
+        <Link href="/">Home</Link>
+      </div>
 
-      <form onSubmit={handleSubmit} style={{ marginTop: 20, display: 'grid', gap: 10, maxWidth: 400 }}>
+      <form
+        onSubmit={handleSubmit}
+        style={{ marginTop: 20, display: 'grid', gap: 10, maxWidth: 420 }}
+      >
         <input
           type="month"
           value={form.period_month}
@@ -120,37 +184,59 @@ export default function CostiPersonale() {
           ))}
         </select>
 
-        <button type="submit">Salva</button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="submit">{editingId ? 'Aggiorna' : 'Salva'}</button>
+          {editingId && (
+            <button type="button" onClick={resetForm}>
+              Annulla
+            </button>
+          )}
+        </div>
       </form>
 
-      {message && <p>{message}</p>}
+      {message && <p style={{ marginTop: 12 }}>{message}</p>}
 
       <h2 style={{ marginTop: 30 }}>Elenco</h2>
 
-      <table style={{ marginTop: 10, borderCollapse: 'collapse', width: '100%' }}>
-        <thead>
-          <tr>
-            <th style={th}>Mese</th>
-            <th style={th}>Costo</th>
-            <th style={th}>Ore</th>
-            <th style={th}>PV</th>
-          </tr>
-        </thead>
-        <tbody>
-          {dataList.map((row) => {
-            const pv = pointsOfSale.find((p) => p.id === row.point_of_sale_id)
+      {rows.length === 0 ? (
+        <p>Nessun costo del personale presente.</p>
+      ) : (
+        <table style={{ marginTop: 10, borderCollapse: 'collapse', width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={th}>Mese</th>
+              <th style={th}>Costo</th>
+              <th style={th}>Ore</th>
+              <th style={th}>PV</th>
+              <th style={th}>Azioni</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const pv = pointsOfSale.find((p) => p.id === row.point_of_sale_id)
 
-            return (
-              <tr key={row.id}>
-                <td style={td}>{row.period_month}</td>
-                <td style={td}>{row.amount}</td>
-                <td style={td}>{row.worked_hours}</td>
-                <td style={td}>{pv?.name || ''}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+              return (
+                <tr key={row.id}>
+                  <td style={td}>{row.period_month || ''}</td>
+                  <td style={td}>{row.amount || ''}</td>
+                  <td style={td}>{row.worked_hours || ''}</td>
+                  <td style={td}>{pv?.name || ''}</td>
+                  <td style={td}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="button" onClick={() => handleEdit(row)}>
+                        Modifica
+                      </button>
+                      <button type="button" onClick={() => handleDelete(row.id)}>
+                        Cancella
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }
