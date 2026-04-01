@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import Header from '../components/Header'
 
 export default function Home() {
   const [email, setEmail] = useState('')
@@ -88,26 +89,7 @@ export default function Home() {
   return (
     <div style={pageStyle}>
       <div style={containerStyle}>
-        <div style={topBarStyle}>
-          <div style={brandWrapStyle}>
-            <img
-              src="/logo.png"
-              alt="logo"
-              style={{
-                height: 42,
-                objectFit: 'contain',
-              }}
-            />
-
-            <div>
-              <h1 style={titleStyle}>Business Analytics</h1>
-            </div>
-          </div>
-
-          <button onClick={handleLogout} style={logoutButtonStyle}>
-            Esci
-          </button>
-        </div>
+        <Header onLogout={handleLogout} />
 
         {message && <p style={errorTextStyle}>{message}</p>}
 
@@ -171,63 +153,6 @@ const loginCardStyle = {
   borderRadius: 18,
   padding: 32,
   boxShadow: '0 10px 30px rgba(0,0,0,0.05)',
-}
-
-const topBarStyle = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 16,
-  marginBottom: 24,
-  flexWrap: 'wrap',
-}
-
-const brandWrapStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 16,
-}
-
-const titleStyle = {
-  margin: 0,
-  fontSize: 30,
-  color: '#111827',
-  lineHeight: 1.1,
-}
-
-const subtitleStyle = {
-  margin: '6px 0 0 0',
-  color: '#6b7280',
-  fontSize: 14,
-}
-
-const heroCardStyle = {
-  background: '#ffffff',
-  border: '1px solid #e5e7eb',
-  borderRadius: 18,
-  padding: 24,
-  boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
-  marginBottom: 24,
-}
-
-const heroEyebrowStyle = {
-  margin: 0,
-  fontSize: 12,
-  letterSpacing: '0.08em',
-  textTransform: 'uppercase',
-  color: '#6b7280',
-}
-
-const heroTitleStyle = {
-  margin: '8px 0 8px 0',
-  fontSize: 24,
-  color: '#111827',
-}
-
-const heroTextStyle = {
-  margin: 0,
-  color: '#4b5563',
-  fontSize: 15,
 }
 
 const menuSectionStyle = {
@@ -304,16 +229,6 @@ const primaryButtonStyle = {
   color: '#fff',
   cursor: 'pointer',
   fontSize: 15,
-  fontWeight: 600,
-}
-
-const logoutButtonStyle = {
-  padding: '10px 14px',
-  border: '1px solid #d1d5db',
-  borderRadius: 12,
-  background: '#fff',
-  cursor: 'pointer',
-  fontSize: 14,
   fontWeight: 600,
 }
 
