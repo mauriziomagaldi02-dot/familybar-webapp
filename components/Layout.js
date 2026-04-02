@@ -12,6 +12,7 @@ const menuItems = [
   { href: '/import-xml', label: 'Import XML', icon: '📂', note: 'Importazione FatturaPA' },
   { href: '/mappature', label: 'Mappature fornitori', icon: '🧩', note: 'Regole automatiche di assegnazione' },
   { href: '/fornitori', label: 'Fornitori', icon: '🏷️', note: 'Anagrafica, P.IVA e codice fiscale' },
+  { href: '/categorie', label: 'Categorie', icon: '📚', note: 'Gestione categorie acquisti' },
 ]
 
 export default function Layout({ children, onLogout, compactMenu = false }) {
