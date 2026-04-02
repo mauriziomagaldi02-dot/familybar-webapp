@@ -24,6 +24,8 @@ export default function Fatture() {
   const [message, setMessage] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [selectedMonth, setSelectedMonth] = useState('')
+  const [pageSize, setPageSize] = useState(10)
+  const [currentPage, setCurrentPage] = useState(1)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -43,6 +45,10 @@ export default function Fatture() {
     if (user) loadData()
   }, [user, selectedMonth])
 
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [selectedMonth, pageSize])
+
   const mappingsBySupplier = useMemo(() => {
     const map = new Map()
     for (const row of mappings) {
@@ -50,6 +56,13 @@ export default function Fatture() {
     }
     return map
   }, [mappings])
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+
+  const paginatedRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize
+    return rows.slice(startIndex, startIndex + pageSize)
+  }, [rows, currentPage, pageSize])
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -218,6 +231,14 @@ export default function Fatture() {
     return categories.find((c) => String(c.id) === String(id))?.name || ''
   }
 
+  function goToPrevPage() {
+    setCurrentPage((prev) => Math.max(1, prev - 1))
+  }
+
+  function goToNextPage() {
+    setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+  }
+
   if (!user) {
     return (
       <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
@@ -245,12 +266,21 @@ export default function Fatture() {
         <button type="button" onClick={() => setSelectedMonth('')} style={secondaryButtonStyle}>
           Tutti
         </button>
+
+        <label style={filterLabelStyle}>Mostra</label>
+        <select
+          value={pageSize}
+          onChange={(e) => setPageSize(Number(e.target.value))}
+          style={filterInputStyle}
+        >
+          <option value={10}>10</option>
+          <option value={20}>20</option>
+          <option value={50}>50</option>
+          <option value={100}>100</option>
+        </select>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        style={formWrapStyle}
-      >
+      <form onSubmit={handleSubmit} style={formWrapStyle}>
         <select
           value={form.supplier_id}
           onChange={(e) => setForm(applySupplierMapping(e.target.value))}
@@ -350,43 +380,74 @@ export default function Fatture() {
       {rows.length === 0 ? (
         <p>Nessuna fattura presente.</p>
       ) : (
-        <table style={table}>
-          <thead>
-            <tr>
-              <th style={th}>Data</th>
-              <th style={th}>Numero</th>
-              <th style={th}>Imponibile</th>
-              <th style={th}>Fornitore</th>
-              <th style={th}>PV</th>
-              <th style={th}>Categoria</th>
-              <th style={th}>Generale</th>
-              <th style={th}>Azioni</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id}>
-                <td style={td}>{row.invoice_date || ''}</td>
-                <td style={td}>{row.invoice_number || ''}</td>
-                <td style={td}>{row.amount || ''}</td>
-                <td style={td}>{getSupplierName(row.supplier_id)}</td>
-                <td style={td}>{row.is_general ? '' : getPvName(row.point_of_sale_id)}</td>
-                <td style={td}>{getCategoryName(row.category_id)}</td>
-                <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
-                <td style={td}>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button type="button" onClick={() => handleEdit(row)} style={smallButtonStyle}>
-                      Modifica
-                    </button>
-                    <button type="button" onClick={() => handleDelete(row.id)} style={smallDangerButtonStyle}>
-                      Cancella
-                    </button>
-                  </div>
-                </td>
+        <>
+          <div style={paginationInfoStyle}>
+            <span>
+              Totale fatture: <strong>{rows.length}</strong>
+            </span>
+            <span>
+              Pagina <strong>{currentPage}</strong> di <strong>{totalPages}</strong>
+            </span>
+          </div>
+
+          <table style={table}>
+            <thead>
+              <tr>
+                <th style={th}>Data</th>
+                <th style={th}>Numero</th>
+                <th style={th}>Imponibile</th>
+                <th style={th}>Fornitore</th>
+                <th style={th}>PV</th>
+                <th style={th}>Categoria</th>
+                <th style={th}>Generale</th>
+                <th style={th}>Azioni</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {paginatedRows.map((row) => (
+                <tr key={row.id}>
+                  <td style={td}>{row.invoice_date || ''}</td>
+                  <td style={td}>{row.invoice_number || ''}</td>
+                  <td style={td}>{row.amount || ''}</td>
+                  <td style={td}>{getSupplierName(row.supplier_id)}</td>
+                  <td style={td}>{row.is_general ? '' : getPvName(row.point_of_sale_id)}</td>
+                  <td style={td}>{getCategoryName(row.category_id)}</td>
+                  <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
+                  <td style={td}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="button" onClick={() => handleEdit(row)} style={smallButtonStyle}>
+                        Modifica
+                      </button>
+                      <button type="button" onClick={() => handleDelete(row.id)} style={smallDangerButtonStyle}>
+                        Cancella
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div style={paginationWrapStyle}>
+            <button
+              type="button"
+              onClick={goToPrevPage}
+              disabled={currentPage === 1}
+              style={currentPage === 1 ? disabledButtonStyle : secondaryButtonStyle}
+            >
+              ← Precedente
+            </button>
+
+            <button
+              type="button"
+              onClick={goToNextPage}
+              disabled={currentPage === totalPages}
+              style={currentPage === totalPages ? disabledButtonStyle : secondaryButtonStyle}
+            >
+              Successiva →
+            </button>
+          </div>
+        </>
       )}
     </Layout>
   )
@@ -489,6 +550,16 @@ const secondaryButtonStyle = {
   fontSize: 14,
 }
 
+const disabledButtonStyle = {
+  padding: '10px 14px',
+  border: '1px solid #e5e7eb',
+  borderRadius: 10,
+  background: '#f3f4f6',
+  color: '#9ca3af',
+  cursor: 'not-allowed',
+  fontSize: 14,
+}
+
 const smallButtonStyle = {
   padding: '8px 10px',
   border: '1px solid #d1d5db',
@@ -516,6 +587,25 @@ const messageStyle = {
 const sectionTitleStyle = {
   marginTop: 32,
   color: '#111827',
+}
+
+const paginationInfoStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 12,
+  flexWrap: 'wrap',
+  marginTop: 12,
+  marginBottom: 12,
+  fontSize: 14,
+  color: '#374151',
+}
+
+const paginationWrapStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 12,
+  flexWrap: 'wrap',
+  marginTop: 16,
 }
 
 const table = {
