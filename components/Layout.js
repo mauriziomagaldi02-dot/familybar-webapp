@@ -122,3 +122,20 @@ const contentCardStyle = {
   padding: 24,
   boxShadow: '0 10px 30px rgba(0,0,0,0.05)',
 }
+
+const compactMenuStyle = {
+  display: 'flex',
+  gap: 12,
+  flexWrap: 'wrap',
+  marginBottom: 20,
+}
+
+const compactLinkStyle = {
+  fontSize: 13,
+  padding: '6px 10px',
+  border: '1px solid #e5e7eb',
+  borderRadius: 8,
+  background: '#fff',
+  textDecoration: 'none',
+  color: '#111827',
+}
