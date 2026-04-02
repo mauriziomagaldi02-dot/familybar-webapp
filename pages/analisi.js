@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
+import Layout from '../components/Layout'
 
 export default function Analisi() {
   const [user, setUser] = useState(null)
@@ -32,6 +33,10 @@ export default function Analisi() {
   useEffect(() => {
     if (user) loadData()
   }, [user, selectedMonth, selectedPv])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+  }
 
   async function loadData() {
     setMessage('')
@@ -96,25 +101,25 @@ export default function Analisi() {
 
   const filteredPointsOfSale = useMemo(() => {
     return (data.pointsOfSale || []).filter((pv) =>
-      selectedPv ? pv.id === selectedPv : true
+      selectedPv ? String(pv.id) === String(selectedPv) : true
     )
   }, [data.pointsOfSale, selectedPv])
 
   const filteredInvoices = useMemo(() => {
     return (data.invoices || []).filter((i) =>
-      selectedPv ? i.point_of_sale_id === selectedPv : true
+      selectedPv ? String(i.point_of_sale_id) === String(selectedPv) : true
     )
   }, [data.invoices, selectedPv])
 
   const filteredRevenues = useMemo(() => {
     return (data.revenues || []).filter((r) =>
-      selectedPv ? r.point_of_sale_id === selectedPv : true
+      selectedPv ? String(r.point_of_sale_id) === String(selectedPv) : true
     )
   }, [data.revenues, selectedPv])
 
   const filteredStaff = useMemo(() => {
     return (data.staffCosts || []).filter((s) =>
-      selectedPv ? s.point_of_sale_id === selectedPv : true
+      selectedPv ? String(s.point_of_sale_id) === String(selectedPv) : true
     )
   }, [data.staffCosts, selectedPv])
 
@@ -122,7 +127,7 @@ export default function Analisi() {
     return (data.manualCosts || []).filter((m) => {
       if (!selectedPv) return true
       if (m.is_general) return true
-      return m.point_of_sale_id === selectedPv
+      return String(m.point_of_sale_id) === String(selectedPv)
     })
   }, [data.manualCosts, selectedPv])
 
@@ -141,7 +146,7 @@ export default function Analisi() {
 
     return data.suppliers
       .map((supplier) => {
-        const rows = filteredInvoices.filter((i) => i.supplier_id === supplier.id)
+        const rows = filteredInvoices.filter((i) => String(i.supplier_id) === String(supplier.id))
         const imponibile = sumAmounts(rows)
         const fatture = rows.length
         const incidenza = total > 0 ? (imponibile / total) * 100 : 0
@@ -177,7 +182,7 @@ export default function Analisi() {
   const categoryAnalysis = useMemo(() => {
     return data.categories
       .map((cat) => {
-        const rows = filteredInvoices.filter((i) => i.category_id === cat.id)
+        const rows = filteredInvoices.filter((i) => String(i.category_id) === String(cat.id))
         return {
           id: cat.id,
           name: cat.name,
@@ -192,14 +197,14 @@ export default function Analisi() {
   const pvAnalysis = useMemo(() => {
     return filteredPointsOfSale
       .map((pv) => {
-        const ricavi = sumAmounts(filteredRevenues.filter((r) => r.point_of_sale_id === pv.id))
-        const acquisti = sumAmounts(filteredInvoices.filter((i) => i.point_of_sale_id === pv.id))
-        const costoPersonale = sumAmounts(filteredStaff.filter((s) => s.point_of_sale_id === pv.id))
+        const ricavi = sumAmounts(filteredRevenues.filter((r) => String(r.point_of_sale_id) === String(pv.id)))
+        const acquisti = sumAmounts(filteredInvoices.filter((i) => String(i.point_of_sale_id) === String(pv.id)))
+        const costoPersonale = sumAmounts(filteredStaff.filter((s) => String(s.point_of_sale_id) === String(pv.id)))
         const speseManuali = sumAmounts(
-          filteredManualCosts.filter((m) => !m.is_general && m.point_of_sale_id === pv.id)
+          filteredManualCosts.filter((m) => !m.is_general && String(m.point_of_sale_id) === String(pv.id))
         )
         const ore = filteredStaff
-          .filter((s) => s.point_of_sale_id === pv.id)
+          .filter((s) => String(s.point_of_sale_id) === String(pv.id))
           .reduce((sum, s) => sum + Number(s.worked_hours || 0), 0)
 
         const margine = ricavi - acquisti - costoPersonale - speseManuali
@@ -230,41 +235,35 @@ export default function Analisi() {
     return (
       <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
         <p>Devi accedere</p>
-        <Link href="/">Home</Link>
+        <Link href="/">Torna alla home</Link>
       </div>
     )
   }
 
   return (
-    <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-        <h1 style={{ margin: 0 }}>Analisi avanzata</h1>
-        <Link href="/">Home</Link>
+    <Layout onLogout={handleLogout} compactMenu>
+      <div style={pageHeaderStyle}>
+        <h1 style={pageTitleStyle}>Analisi avanzata</h1>
       </div>
 
-      <div
-        style={{
-          marginTop: 20,
-          display: 'flex',
-          gap: 10,
-          alignItems: 'center',
-          flexWrap: 'wrap',
-        }}
-      >
-        <label>Mese:</label>
+      <div style={filtersWrapStyle}>
+        <label style={filterLabelStyle}>Mese</label>
         <input
           type="month"
           value={selectedMonth}
           onChange={(e) => setSelectedMonth(e.target.value)}
+          style={filterInputStyle}
         />
-        <button type="button" onClick={() => setSelectedMonth('')}>
+
+        <button type="button" onClick={() => setSelectedMonth('')} style={secondaryButtonStyle}>
           Tutti i mesi
         </button>
 
-        <label>PV:</label>
+        <label style={filterLabelStyle}>PV</label>
         <select
           value={selectedPv}
           onChange={(e) => setSelectedPv(e.target.value)}
+          style={filterInputStyle}
         >
           <option value="">Tutti i PV</option>
           {data.pointsOfSale.map((pv) => (
@@ -275,9 +274,9 @@ export default function Analisi() {
         </select>
       </div>
 
-      {message && <p style={{ color: 'red', marginTop: 16 }}>{message}</p>}
+      {message && <p style={errorTextStyle}>{message}</p>}
 
-      <h2 style={{ marginTop: 30 }}>Riepilogo generale</h2>
+      <h2 style={sectionTitleStyle}>Riepilogo generale</h2>
       <table style={table}>
         <thead>
           <tr>
@@ -301,7 +300,7 @@ export default function Analisi() {
         </tbody>
       </table>
 
-      <h2 style={{ marginTop: 30 }}>Grafico top fornitori</h2>
+      <h2 style={sectionTitleStyle}>Grafico top fornitori</h2>
       <BarChart
         rows={topSuppliersChart}
         valueKey="imponibile"
@@ -309,7 +308,7 @@ export default function Analisi() {
         valueFormatter={formatEuro}
       />
 
-      <h2 style={{ marginTop: 30 }}>Grafico categorie</h2>
+      <h2 style={sectionTitleStyle}>Grafico categorie</h2>
       <BarChart
         rows={categoriesChart}
         valueKey="imponibile"
@@ -317,7 +316,7 @@ export default function Analisi() {
         valueFormatter={formatEuro}
       />
 
-      <h2 style={{ marginTop: 30 }}>Grafico produttività PV</h2>
+      <h2 style={sectionTitleStyle}>Grafico produttività PV</h2>
       <BarChart
         rows={pvProductivityChart}
         valueKey="produttivita"
@@ -326,7 +325,7 @@ export default function Analisi() {
         threshold={40}
       />
 
-      <h2 style={{ marginTop: 30 }}>Analisi per punto vendita</h2>
+      <h2 style={sectionTitleStyle}>Analisi per punto vendita</h2>
       <table style={table}>
         <thead>
           <tr>
@@ -370,7 +369,7 @@ export default function Analisi() {
         </tbody>
       </table>
 
-      <h2 style={{ marginTop: 30 }}>Analisi per fornitore</h2>
+      <h2 style={sectionTitleStyle}>Analisi per fornitore</h2>
       <table style={table}>
         <thead>
           <tr>
@@ -392,7 +391,7 @@ export default function Analisi() {
         </tbody>
       </table>
 
-      <h2 style={{ marginTop: 30 }}>Pareto fornitori 80/20</h2>
+      <h2 style={sectionTitleStyle}>Pareto fornitori 80/20</h2>
       <table style={table}>
         <thead>
           <tr>
@@ -420,7 +419,7 @@ export default function Analisi() {
         </tbody>
       </table>
 
-      <h2 style={{ marginTop: 30 }}>Analisi per categoria</h2>
+      <h2 style={sectionTitleStyle}>Analisi per categoria</h2>
       <table style={table}>
         <thead>
           <tr>
@@ -439,7 +438,7 @@ export default function Analisi() {
           ))}
         </tbody>
       </table>
-    </div>
+    </Layout>
   )
 }
 
@@ -451,7 +450,7 @@ function BarChart({ rows, valueKey, labelKey, valueFormatter, threshold = null }
   }
 
   return (
-    <div style={{ border: '1px solid #ddd', padding: 16, marginTop: 12 }}>
+    <div style={chartWrapStyle}>
       {rows.map((row, index) => {
         const value = Number(row[valueKey] || 0)
         const width = max > 0 ? (value / max) * 100 : 0
@@ -481,6 +480,7 @@ function BarChart({ rows, valueKey, labelKey, valueFormatter, threshold = null }
                 background: '#f1f1f1',
                 position: 'relative',
                 overflow: 'hidden',
+                borderRadius: 6,
               }}
             >
               <div
@@ -541,6 +541,7 @@ function badgeStyle(status) {
       padding: '4px 8px',
       background: '#dff0d8',
       border: '1px solid #c3e6cb',
+      borderRadius: 8,
     }
   }
   if (status === 'warn') {
@@ -549,6 +550,7 @@ function badgeStyle(status) {
       padding: '4px 8px',
       background: '#fcf8e3',
       border: '1px solid #faebcc',
+      borderRadius: 8,
     }
   }
   return {
@@ -556,6 +558,7 @@ function badgeStyle(status) {
     padding: '4px 8px',
     background: '#f2dede',
     border: '1px solid #ebccd1',
+    borderRadius: 8,
   }
 }
 
@@ -589,6 +592,69 @@ function formatPercent(value) {
 
 function formatNumber(value) {
   return Number(value || 0).toFixed(2)
+}
+
+const pageHeaderStyle = {
+  display: 'flex',
+  gap: 16,
+  alignItems: 'center',
+  marginBottom: 20,
+}
+
+const pageTitleStyle = {
+  margin: 0,
+  color: '#111827',
+  fontSize: 28,
+}
+
+const filtersWrapStyle = {
+  marginTop: 20,
+  display: 'flex',
+  gap: 10,
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  marginBottom: 8,
+}
+
+const filterLabelStyle = {
+  fontSize: 14,
+  fontWeight: 600,
+  color: '#374151',
+}
+
+const filterInputStyle = {
+  padding: '10px 12px',
+  border: '1px solid #d1d5db',
+  borderRadius: 10,
+  fontSize: 14,
+  background: '#fff',
+}
+
+const secondaryButtonStyle = {
+  padding: '10px 12px',
+  border: '1px solid #d1d5db',
+  borderRadius: 10,
+  background: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
+}
+
+const errorTextStyle = {
+  color: '#b91c1c',
+  marginTop: 16,
+}
+
+const sectionTitleStyle = {
+  marginTop: 30,
+  color: '#111827',
+}
+
+const chartWrapStyle = {
+  border: '1px solid #ddd',
+  padding: 16,
+  marginTop: 12,
+  borderRadius: 12,
+  background: '#fff',
 }
 
 const table = {
