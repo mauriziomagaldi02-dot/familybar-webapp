@@ -2,7 +2,11 @@ export default function Header({ onLogout }) {
   return (
     <header style={headerStyle}>
       <div style={brandWrapStyle}>
-        <img src="/logo.png" alt="logo" style={logoStyle} />
+        <img
+          src="/logo.png"
+          alt="logo"
+          style={logoStyle}
+        />
         <div style={titleStyle}>Business Analytics</div>
       </div>
 
@@ -17,7 +21,7 @@ const headerStyle = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  marginBottom: 24,
+  marginBottom: 28,
   padding: '16px 20px',
   background: '#ffffff',
   border: '1px solid #e5e7eb',
