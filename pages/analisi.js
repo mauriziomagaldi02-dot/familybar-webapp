@@ -283,6 +283,69 @@ export default function Analisi() {
     paretoStartIndex + paretoRowsPerPage
   )
 
+  function exportCsv(rows, fileName) {
+    if (!rows || !rows.length) {
+      setMessage('Nessun dato da esportare')
+      return
+    }
+
+    const headers = Object.keys(rows[0])
+
+    const csv = [
+      headers.join(';'),
+      ...rows.map((row) =>
+        headers
+          .map((header) => {
+            const value = row[header] ?? ''
+            return `"${String(value).replace(/"/g, '""')}"`
+          })
+          .join(';')
+      ),
+    ].join('\n')
+
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', `${fileName}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  }
+
+  function buildExportFileName(baseName) {
+    const monthPart = selectedMonth || 'tutti_i_mesi'
+    const pvName =
+      data.pointsOfSale.find((pv) => String(pv.id) === String(selectedPv))?.name || 'tutti_i_pv'
+
+    return `${sanitizeFileName(baseName)}_${sanitizeFileName(monthPart)}_${sanitizeFileName(pvName)}`
+  }
+
+  function exportSupplierAnalysisCsv() {
+    const rows = supplierAnalysis.map((row) => ({
+      Fornitore: row.name,
+      Imponibile: roundValue(row.imponibile),
+      Numero_Fatture: row.fatture,
+      Incidenza_Percento: roundValue(row.incidenza),
+      Incidenza_Cumulata_Percento: roundValue(row.incidenzaCumulata),
+    }))
+
+    exportCsv(rows, buildExportFileName('analisi_fornitore'))
+  }
+
+  function exportParetoSuppliersCsv() {
+    const rows = paretoSuppliers.map((row) => ({
+      Fornitore: row.name,
+      Imponibile: roundValue(row.imponibile),
+      Incidenza_Percento: roundValue(row.incidenza),
+      Cumulata_Percento: roundValue(row.cumulataPerc),
+      Pareto_80_20: row.inPareto80 ? 'Si' : 'No',
+    }))
+
+    exportCsv(rows, buildExportFileName('pareto_fornitori'))
+  }
+
   if (!user) {
     return (
       <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
@@ -487,6 +550,16 @@ export default function Analisi() {
             </div>
           </div>
 
+          <div style={exportRowStyle}>
+            <button
+              type="button"
+              onClick={exportSupplierAnalysisCsv}
+              style={primaryButtonStyle}
+            >
+              Export CSV analisi fornitore
+            </button>
+          </div>
+
           <div style={tableWrapStyle}>
             <table style={table}>
               <thead>
@@ -564,6 +637,16 @@ export default function Analisi() {
                 →
               </button>
             </div>
+          </div>
+
+          <div style={exportRowStyle}>
+            <button
+              type="button"
+              onClick={exportParetoSuppliersCsv}
+              style={primaryButtonStyle}
+            >
+              Export CSV pareto fornitori
+            </button>
           </div>
 
           <div style={tableWrapStyle}>
@@ -776,6 +859,18 @@ function formatNumber(value) {
   return Number(value || 0).toFixed(2)
 }
 
+function roundValue(value) {
+  return Number(value || 0).toFixed(2)
+}
+
+function sanitizeFileName(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^\w\-]/g, '')
+    .toLowerCase()
+}
+
 const pageHeaderStyle = {
   display: 'flex',
   gap: 16,
@@ -819,6 +914,17 @@ const secondaryButtonStyle = {
   background: '#fff',
   cursor: 'pointer',
   fontSize: 14,
+}
+
+const primaryButtonStyle = {
+  padding: '10px 14px',
+  border: '1px solid #111827',
+  borderRadius: 10,
+  background: '#111827',
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
+  fontWeight: 600,
 }
 
 const errorTextStyle = {
@@ -933,4 +1039,10 @@ const paginationButtonStyle = {
 const disabledButtonStyle = {
   opacity: 0.45,
   cursor: 'not-allowed',
+}
+
+const exportRowStyle = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+  marginTop: 12,
 }
