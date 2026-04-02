@@ -14,32 +14,12 @@ const initialData = {
 }
 
 export default function Analisi() {
-  const [user, setUser] = useState(null)
   const [selectedMonth, setSelectedMonth] = useState('')
   const [selectedPv, setSelectedPv] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState(initialData)
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user || null))
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null)
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  useEffect(() => {
-    if (user) loadData()
-  }, [user])
-
-  async function handleLogout() {
-    await supabase.auth.signOut()
-  }
 
   async function loadData() {
     setLoading(true)
