@@ -14,7 +14,7 @@ const initialForm = {
 
 export default function SpeseManuali() {
   const [user, setUser] = useState(null)
-  const [rows, setRows] = useState([])
+  const [allRows, setAllRows] = useState([])
   const [pointsOfSale, setPointsOfSale] = useState([])
   const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
@@ -22,6 +22,9 @@ export default function SpeseManuali() {
   const [selectedMonth, setSelectedMonth] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [currentPage, setCurrentPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -39,54 +42,73 @@ export default function SpeseManuali() {
 
   useEffect(() => {
     if (user) loadData()
-  }, [user, selectedMonth])
-
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [selectedMonth, pageSize])
-
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
-
-  const paginatedRows = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize
-    return rows.slice(startIndex, startIndex + pageSize)
-  }, [rows, currentPage, pageSize])
+  }, [user])
 
   async function handleLogout() {
     await supabase.auth.signOut()
   }
 
   async function loadData() {
+    setLoading(true)
     setMessage('')
 
-    let costsQuery = supabase
-      .from('manual_costs')
-      .select('*')
-      .order('cost_date', { ascending: false })
+    const [{ data: costs, error: costsError }, { data: pvData, error: pvError }] =
+      await Promise.all([
+        supabase.from('manual_costs').select('*').order('cost_date', { ascending: false }),
+        supabase.from('points_of_sale').select('*').order('name', { ascending: true }),
+      ])
+
+    if (costsError || pvError) {
+      setMessage(costsError?.message || pvError?.message || 'Errore caricamento dati')
+      setLoading(false)
+      return
+    }
+
+    setAllRows(costs || [])
+    setPointsOfSale(pvData || [])
+    setLoading(false)
+  }
+
+  const pvMap = useMemo(() => {
+    const map = {}
+    for (const pv of pointsOfSale) {
+      map[String(pv.id)] = pv.name
+    }
+    return map
+  }, [pointsOfSale])
+
+  const filteredRows = useMemo(() => {
+    let result = [...allRows]
 
     if (selectedMonth) {
       const startDate = `${selectedMonth}-01`
       const endDate = `${getNextMonth(selectedMonth)}-01`
 
-      costsQuery = costsQuery
-        .gte('cost_date', startDate)
-        .lt('cost_date', endDate)
+      result = result.filter((row) => {
+        const date = String(row.cost_date || '')
+        return date >= startDate && date < endDate
+      })
     }
 
-    const [{ data: costs, error: costsError }, { data: pvData, error: pvError }] =
-      await Promise.all([
-        costsQuery,
-        supabase.from('points_of_sale').select('*').order('name'),
-      ])
+    result.sort((a, b) => {
+      const dateCompare = String(b.cost_date || '').localeCompare(String(a.cost_date || ''))
+      if (dateCompare !== 0) return dateCompare
+      return Number(b.id || 0) - Number(a.id || 0)
+    })
 
-    if (costsError || pvError) {
-      setMessage(costsError?.message || pvError?.message || 'Errore caricamento dati')
-      return
-    }
+    return result
+  }, [allRows, selectedMonth])
 
-    setRows(costs || [])
-    setPointsOfSale(pvData || [])
-  }
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [selectedMonth, pageSize, filteredRows.length])
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
+
+  const paginatedRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize
+    return filteredRows.slice(startIndex, startIndex + pageSize)
+  }, [filteredRows, currentPage, pageSize])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -94,38 +116,86 @@ export default function SpeseManuali() {
 
     const payload = {
       cost_date: form.cost_date || null,
-      description: form.description || null,
-      amount: form.amount ? Number(form.amount) : null,
+      description: form.description.trim() || null,
+      amount: form.amount !== '' ? Number(form.amount) : null,
       point_of_sale_id: form.is_general ? null : form.point_of_sale_id || null,
       is_general: !!form.is_general,
-      note: form.note || null,
+      note: form.note.trim() || null,
     }
 
+    if (!payload.cost_date) {
+      setMessage('Inserisci la data')
+      return
+    }
+
+    if (!payload.description) {
+      setMessage('Inserisci la descrizione')
+      return
+    }
+
+    if (payload.amount === null) {
+      setMessage('Inserisci l’importo')
+      return
+    }
+
+    if (!payload.is_general && !payload.point_of_sale_id) {
+      setMessage('Seleziona il punto vendita oppure marca la spesa come generale')
+      return
+    }
+
+    const duplicate = allRows.find((row) => {
+      if (editingId && row.id === editingId) return false
+
+      return (
+        String(row.cost_date || '') === String(payload.cost_date || '') &&
+        String(row.description || '').trim().toLowerCase() === String(payload.description || '').trim().toLowerCase() &&
+        String(row.point_of_sale_id || '') === String(payload.point_of_sale_id || '') &&
+        !!row.is_general === !!payload.is_general
+      )
+    })
+
+    if (duplicate) {
+      setMessage('Esiste già una spesa simile con stessa data, descrizione e destinazione')
+      return
+    }
+
+    setSaving(true)
+
     if (editingId) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('manual_costs')
         .update(payload)
         .eq('id', editingId)
+        .select()
+        .single()
 
       if (error) {
         setMessage(error.message)
+        setSaving(false)
         return
       }
 
+      setAllRows((prev) => prev.map((row) => (row.id === editingId ? data : row)))
       setMessage('Spesa manuale aggiornata.')
     } else {
-      const { error } = await supabase.from('manual_costs').insert(payload)
+      const { data, error } = await supabase
+        .from('manual_costs')
+        .insert(payload)
+        .select()
+        .single()
 
       if (error) {
         setMessage(error.message)
+        setSaving(false)
         return
       }
 
+      setAllRows((prev) => [data, ...prev])
       setMessage('Spesa manuale inserita.')
     }
 
     resetForm()
-    loadData()
+    setSaving(false)
   }
 
   function handleEdit(row) {
@@ -139,23 +209,29 @@ export default function SpeseManuali() {
       note: row.note || '',
     })
     setMessage('')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   async function handleDelete(id) {
     const conferma = window.confirm('Vuoi davvero cancellare questa spesa?')
     if (!conferma) return
 
+    setDeletingId(id)
+    setMessage('')
+
     const { error } = await supabase.from('manual_costs').delete().eq('id', id)
 
     if (error) {
       setMessage(error.message)
+      setDeletingId(null)
       return
     }
 
     if (editingId === id) resetForm()
 
+    setAllRows((prev) => prev.filter((row) => row.id !== id))
     setMessage('Spesa manuale cancellata.')
-    loadData()
+    setDeletingId(null)
   }
 
   function resetForm() {
@@ -164,7 +240,7 @@ export default function SpeseManuali() {
   }
 
   function getPvName(id) {
-    return pointsOfSale.find((p) => String(p.id) === String(id))?.name || ''
+    return pvMap[String(id)] || ''
   }
 
   function goToPrevPage() {
@@ -215,10 +291,7 @@ export default function SpeseManuali() {
         </select>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        style={formWrapStyle}
-      >
+      <form onSubmit={handleSubmit} style={formWrapStyle}>
         <input
           type="date"
           value={form.cost_date}
@@ -282,9 +355,14 @@ export default function SpeseManuali() {
         />
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button type="submit" style={primaryButtonStyle}>
-            {editingId ? 'Aggiorna' : 'Salva'}
+          <button
+            type="submit"
+            style={saving ? disabledPrimaryButtonStyle : primaryButtonStyle}
+            disabled={saving}
+          >
+            {saving ? 'Salvataggio...' : editingId ? 'Aggiorna' : 'Salva'}
           </button>
+
           {editingId && (
             <button type="button" onClick={resetForm} style={secondaryButtonStyle}>
               Annulla modifica
@@ -297,54 +375,69 @@ export default function SpeseManuali() {
 
       <h2 style={sectionTitleStyle}>Elenco</h2>
 
-      {rows.length === 0 ? (
+      {loading ? (
+        <p style={messageStyle}>Caricamento...</p>
+      ) : filteredRows.length === 0 ? (
         <p>Nessuna spesa manuale presente.</p>
       ) : (
         <>
           <div style={paginationInfoStyle}>
             <span>
-              Totale righe: <strong>{rows.length}</strong>
+              Totale righe: <strong>{filteredRows.length}</strong>
             </span>
             <span>
               Pagina <strong>{currentPage}</strong> di <strong>{totalPages}</strong>
             </span>
           </div>
 
-          <table style={table}>
-            <thead>
-              <tr>
-                <th style={th}>Data</th>
-                <th style={th}>Descrizione</th>
-                <th style={th}>Importo</th>
-                <th style={th}>PV</th>
-                <th style={th}>Generale</th>
-                <th style={th}>Note</th>
-                <th style={th}>Azioni</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedRows.map((row) => (
-                <tr key={row.id}>
-                  <td style={td}>{row.cost_date || ''}</td>
-                  <td style={td}>{row.description || ''}</td>
-                  <td style={td}>{row.amount || ''}</td>
-                  <td style={td}>{row.is_general ? '' : getPvName(row.point_of_sale_id)}</td>
-                  <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
-                  <td style={td}>{row.note || ''}</td>
-                  <td style={td}>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="button" onClick={() => handleEdit(row)} style={smallButtonStyle}>
-                        Modifica
-                      </button>
-                      <button type="button" onClick={() => handleDelete(row.id)} style={smallDangerButtonStyle}>
-                        Cancella
-                      </button>
-                    </div>
-                  </td>
+          <div style={tableWrapStyle}>
+            <table style={table}>
+              <thead>
+                <tr>
+                  <th style={th}>Data</th>
+                  <th style={th}>Descrizione</th>
+                  <th style={th}>Importo</th>
+                  <th style={th}>PV</th>
+                  <th style={th}>Generale</th>
+                  <th style={th}>Note</th>
+                  <th style={th}>Azioni</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {paginatedRows.map((row) => (
+                  <tr key={row.id}>
+                    <td style={td}>{row.cost_date || ''}</td>
+                    <td style={td}>{row.description || ''}</td>
+                    <td style={td}>{formatEuro(row.amount)}</td>
+                    <td style={td}>{row.is_general ? '' : getPvName(row.point_of_sale_id)}</td>
+                    <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
+                    <td style={td}>{row.note || ''}</td>
+                    <td style={td}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(row)}
+                          style={smallButtonStyle}
+                          disabled={deletingId === row.id}
+                        >
+                          Modifica
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(row.id)}
+                          style={deletingId === row.id ? disabledDangerButtonStyle : smallDangerButtonStyle}
+                          disabled={deletingId === row.id}
+                        >
+                          {deletingId === row.id ? 'Cancellazione...' : 'Cancella'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <div style={paginationWrapStyle}>
             <button
@@ -382,6 +475,13 @@ function getNextMonth(month) {
   }
 
   return `${nextYear}-${String(nextMonth).padStart(2, '0')}`
+}
+
+function formatEuro(value) {
+  return new Intl.NumberFormat('it-IT', {
+    style: 'currency',
+    currency: 'EUR',
+  }).format(Number(value || 0))
 }
 
 const pageHeaderStyle = {
@@ -458,6 +558,17 @@ const primaryButtonStyle = {
   fontWeight: 600,
 }
 
+const disabledPrimaryButtonStyle = {
+  padding: '10px 14px',
+  border: 'none',
+  borderRadius: 10,
+  background: '#9ca3af',
+  color: '#fff',
+  cursor: 'not-allowed',
+  fontSize: 14,
+  fontWeight: 600,
+}
+
 const secondaryButtonStyle = {
   padding: '10px 14px',
   border: '1px solid #d1d5db',
@@ -496,6 +607,16 @@ const smallDangerButtonStyle = {
   fontSize: 13,
 }
 
+const disabledDangerButtonStyle = {
+  padding: '8px 10px',
+  border: '1px solid #fca5a5',
+  borderRadius: 8,
+  background: '#fef2f2',
+  color: '#fca5a5',
+  cursor: 'not-allowed',
+  fontSize: 13,
+}
+
 const messageStyle = {
   marginTop: 12,
   color: '#111827',
@@ -525,20 +646,34 @@ const paginationWrapStyle = {
   marginTop: 16,
 }
 
-const table = {
+const tableWrapStyle = {
+  width: '100%',
+  overflowX: 'auto',
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 16,
   marginTop: 10,
+}
+
+const table = {
+  marginTop: 0,
   borderCollapse: 'collapse',
   width: '100%',
+  minWidth: 860,
 }
 
 const th = {
-  border: '1px solid #ccc',
-  padding: 8,
+  borderBottom: '1px solid #e5e7eb',
+  padding: 10,
   textAlign: 'left',
-  background: '#f5f5f5',
+  background: '#f9fafb',
+  color: '#111827',
+  fontSize: 14,
 }
 
 const td = {
-  border: '1px solid #ccc',
-  padding: 8,
+  borderBottom: '1px solid #f1f5f9',
+  padding: 10,
+  fontSize: 14,
+  color: '#111827',
 }
