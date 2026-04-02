@@ -3,20 +3,23 @@ import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
 import Layout from '../components/Layout'
 
+const initialData = {
+  invoices: [],
+  suppliers: [],
+  pointsOfSale: [],
+  categories: [],
+  revenues: [],
+  staffCosts: [],
+  manualCosts: [],
+}
+
 export default function Analisi() {
   const [user, setUser] = useState(null)
   const [selectedMonth, setSelectedMonth] = useState('')
   const [selectedPv, setSelectedPv] = useState('')
   const [message, setMessage] = useState('')
-  const [data, setData] = useState({
-    invoices: [],
-    suppliers: [],
-    pointsOfSale: [],
-    categories: [],
-    revenues: [],
-    staffCosts: [],
-    manualCosts: [],
-  })
+  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState(initialData)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user || null))
@@ -32,29 +35,15 @@ export default function Analisi() {
 
   useEffect(() => {
     if (user) loadData()
-  }, [user, selectedMonth, selectedPv])
+  }, [user])
 
   async function handleLogout() {
     await supabase.auth.signOut()
   }
 
   async function loadData() {
+    setLoading(true)
     setMessage('')
-
-    let invoicesQuery = supabase.from('invoices').select('*')
-    let revenuesQuery = supabase.from('revenues').select('*')
-    let manualCostsQuery = supabase.from('manual_costs').select('*')
-    let staffCostsQuery = supabase.from('staff_costs').select('*')
-
-    if (selectedMonth) {
-      const startDate = `${selectedMonth}-01`
-      const endDate = `${getNextMonth(selectedMonth)}-01`
-
-      invoicesQuery = invoicesQuery.gte('invoice_date', startDate).lt('invoice_date', endDate)
-      revenuesQuery = revenuesQuery.gte('date', startDate).lt('date', endDate)
-      manualCostsQuery = manualCostsQuery.gte('cost_date', startDate).lt('cost_date', endDate)
-      staffCostsQuery = staffCostsQuery.eq('period_month', selectedMonth)
-    }
 
     const [
       { data: invoices, error: invoicesError },
@@ -65,13 +54,13 @@ export default function Analisi() {
       { data: staffCosts, error: staffCostsError },
       { data: manualCosts, error: manualCostsError },
     ] = await Promise.all([
-      invoicesQuery,
-      supabase.from('suppliers').select('*').order('name'),
-      supabase.from('points_of_sale').select('*').order('name'),
-      supabase.from('categories').select('*').order('name'),
-      revenuesQuery,
-      staffCostsQuery,
-      manualCostsQuery,
+      supabase.from('invoices').select('*'),
+      supabase.from('suppliers').select('*').order('name', { ascending: true }),
+      supabase.from('points_of_sale').select('*').order('name', { ascending: true }),
+      supabase.from('categories').select('*').order('name', { ascending: true }),
+      supabase.from('revenues').select('*'),
+      supabase.from('staff_costs').select('*'),
+      supabase.from('manual_costs').select('*'),
     ])
 
     const err =
@@ -85,6 +74,7 @@ export default function Analisi() {
 
     if (err) {
       setMessage(err)
+      setLoading(false)
       return
     }
 
@@ -97,7 +87,18 @@ export default function Analisi() {
       staffCosts: staffCosts || [],
       manualCosts: manualCosts || [],
     })
+
+    setLoading(false)
   }
+
+  const dateRange = useMemo(() => {
+    if (!selectedMonth) return null
+
+    const startDate = `${selectedMonth}-01`
+    const endDate = `${getNextMonth(selectedMonth)}-01`
+
+    return { startDate, endDate }
+  }, [selectedMonth])
 
   const filteredPointsOfSale = useMemo(() => {
     return (data.pointsOfSale || []).filter((pv) =>
@@ -106,30 +107,49 @@ export default function Analisi() {
   }, [data.pointsOfSale, selectedPv])
 
   const filteredInvoices = useMemo(() => {
-    return (data.invoices || []).filter((i) =>
-      selectedPv ? String(i.point_of_sale_id) === String(selectedPv) : true
-    )
-  }, [data.invoices, selectedPv])
+    return (data.invoices || []).filter((row) => {
+      const matchPv = selectedPv ? String(row.point_of_sale_id) === String(selectedPv) : true
+      const matchMonth = dateRange
+        ? row.invoice_date >= dateRange.startDate && row.invoice_date < dateRange.endDate
+        : true
+
+      return matchPv && matchMonth
+    })
+  }, [data.invoices, selectedPv, dateRange])
 
   const filteredRevenues = useMemo(() => {
-    return (data.revenues || []).filter((r) =>
-      selectedPv ? String(r.point_of_sale_id) === String(selectedPv) : true
-    )
-  }, [data.revenues, selectedPv])
+    return (data.revenues || []).filter((row) => {
+      const matchPv = selectedPv ? String(row.point_of_sale_id) === String(selectedPv) : true
+      const matchMonth = dateRange
+        ? row.date >= dateRange.startDate && row.date < dateRange.endDate
+        : true
+
+      return matchPv && matchMonth
+    })
+  }, [data.revenues, selectedPv, dateRange])
 
   const filteredStaff = useMemo(() => {
-    return (data.staffCosts || []).filter((s) =>
-      selectedPv ? String(s.point_of_sale_id) === String(selectedPv) : true
-    )
-  }, [data.staffCosts, selectedPv])
+    return (data.staffCosts || []).filter((row) => {
+      const matchPv = selectedPv ? String(row.point_of_sale_id) === String(selectedPv) : true
+      const matchMonth = selectedMonth ? String(row.period_month) === String(selectedMonth) : true
+
+      return matchPv && matchMonth
+    })
+  }, [data.staffCosts, selectedPv, selectedMonth])
 
   const filteredManualCosts = useMemo(() => {
-    return (data.manualCosts || []).filter((m) => {
+    return (data.manualCosts || []).filter((row) => {
+      const matchMonth = dateRange
+        ? row.cost_date >= dateRange.startDate && row.cost_date < dateRange.endDate
+        : true
+
+      if (!matchMonth) return false
       if (!selectedPv) return true
-      if (m.is_general) return true
-      return String(m.point_of_sale_id) === String(selectedPv)
+      if (row.is_general) return true
+
+      return String(row.point_of_sale_id) === String(selectedPv)
     })
-  }, [data.manualCosts, selectedPv])
+  }, [data.manualCosts, selectedPv, dateRange])
 
   const summary = useMemo(() => {
     const ricavi = sumAmounts(filteredRevenues)
@@ -183,6 +203,7 @@ export default function Analisi() {
     return data.categories
       .map((cat) => {
         const rows = filteredInvoices.filter((i) => String(i.category_id) === String(cat.id))
+
         return {
           id: cat.id,
           name: cat.name,
@@ -197,15 +218,18 @@ export default function Analisi() {
   const pvAnalysis = useMemo(() => {
     return filteredPointsOfSale
       .map((pv) => {
-        const ricavi = sumAmounts(filteredRevenues.filter((r) => String(r.point_of_sale_id) === String(pv.id)))
-        const acquisti = sumAmounts(filteredInvoices.filter((i) => String(i.point_of_sale_id) === String(pv.id)))
-        const costoPersonale = sumAmounts(filteredStaff.filter((s) => String(s.point_of_sale_id) === String(pv.id)))
-        const speseManuali = sumAmounts(
-          filteredManualCosts.filter((m) => !m.is_general && String(m.point_of_sale_id) === String(pv.id))
+        const pvRevenues = filteredRevenues.filter((r) => String(r.point_of_sale_id) === String(pv.id))
+        const pvInvoices = filteredInvoices.filter((i) => String(i.point_of_sale_id) === String(pv.id))
+        const pvStaff = filteredStaff.filter((s) => String(s.point_of_sale_id) === String(pv.id))
+        const pvManual = filteredManualCosts.filter(
+          (m) => !m.is_general && String(m.point_of_sale_id) === String(pv.id)
         )
-        const ore = filteredStaff
-          .filter((s) => String(s.point_of_sale_id) === String(pv.id))
-          .reduce((sum, s) => sum + Number(s.worked_hours || 0), 0)
+
+        const ricavi = sumAmounts(pvRevenues)
+        const acquisti = sumAmounts(pvInvoices)
+        const costoPersonale = sumAmounts(pvStaff)
+        const speseManuali = sumAmounts(pvManual)
+        const ore = pvStaff.reduce((sum, s) => sum + Number(s.worked_hours || 0), 0)
 
         const margine = ricavi - acquisti - costoPersonale - speseManuali
         const produttivita = ore > 0 ? ricavi / ore : 0
@@ -227,9 +251,12 @@ export default function Analisi() {
       .sort((a, b) => b.ricavi - a.ricavi)
   }, [filteredPointsOfSale, filteredRevenues, filteredInvoices, filteredStaff, filteredManualCosts])
 
-  const topSuppliersChart = supplierAnalysis.slice(0, 10)
-  const categoriesChart = categoryAnalysis.slice(0, 10)
-  const pvProductivityChart = [...pvAnalysis].sort((a, b) => b.produttivita - a.produttivita)
+  const topSuppliersChart = useMemo(() => supplierAnalysis.slice(0, 10), [supplierAnalysis])
+  const categoriesChart = useMemo(() => categoryAnalysis.slice(0, 10), [categoryAnalysis])
+  const pvProductivityChart = useMemo(
+    () => [...pvAnalysis].sort((a, b) => b.produttivita - a.produttivita),
+    [pvAnalysis]
+  )
 
   if (!user) {
     return (
@@ -272,172 +299,192 @@ export default function Analisi() {
             </option>
           ))}
         </select>
+
+        <button type="button" onClick={() => setSelectedPv('')} style={secondaryButtonStyle}>
+          Tutti i PV
+        </button>
       </div>
 
       {message && <p style={errorTextStyle}>{message}</p>}
 
-      <h2 style={sectionTitleStyle}>Riepilogo generale</h2>
-      <table style={table}>
-        <thead>
-          <tr>
-            <th style={th}>Ricavi</th>
-            <th style={th}>Acquisti imponibile</th>
-            <th style={th}>Costo personale</th>
-            <th style={th}>Spese manuali</th>
-            <th style={th}>Margine</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td style={td}>{formatEuro(summary.ricavi)}</td>
-            <td style={td}>{formatEuro(summary.acquisti)}</td>
-            <td style={td}>{formatEuro(summary.costoPersonale)}</td>
-            <td style={td}>{formatEuro(summary.speseManuali)}</td>
-            <td style={{ ...td, ...getMargineStyle(summary.margine), fontWeight: 700 }}>
-              {formatEuro(summary.margine)}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      {loading ? (
+        <p style={loadingTextStyle}>Caricamento dati...</p>
+      ) : (
+        <>
+          <h2 style={sectionTitleStyle}>Riepilogo generale</h2>
+          <div style={tableWrapStyle}>
+            <table style={table}>
+              <thead>
+                <tr>
+                  <th style={th}>Ricavi</th>
+                  <th style={th}>Acquisti imponibile</th>
+                  <th style={th}>Costo personale</th>
+                  <th style={th}>Spese manuali</th>
+                  <th style={th}>Margine</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={td}>{formatEuro(summary.ricavi)}</td>
+                  <td style={td}>{formatEuro(summary.acquisti)}</td>
+                  <td style={td}>{formatEuro(summary.costoPersonale)}</td>
+                  <td style={td}>{formatEuro(summary.speseManuali)}</td>
+                  <td style={{ ...td, ...getMargineStyle(summary.margine), fontWeight: 700 }}>
+                    {formatEuro(summary.margine)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
 
-      <h2 style={sectionTitleStyle}>Grafico top fornitori</h2>
-      <BarChart
-        rows={topSuppliersChart}
-        valueKey="imponibile"
-        labelKey="name"
-        valueFormatter={formatEuro}
-      />
+          <h2 style={sectionTitleStyle}>Grafico top fornitori</h2>
+          <BarChart
+            rows={topSuppliersChart}
+            valueKey="imponibile"
+            labelKey="name"
+            valueFormatter={formatEuro}
+          />
 
-      <h2 style={sectionTitleStyle}>Grafico categorie</h2>
-      <BarChart
-        rows={categoriesChart}
-        valueKey="imponibile"
-        labelKey="name"
-        valueFormatter={formatEuro}
-      />
+          <h2 style={sectionTitleStyle}>Grafico categorie</h2>
+          <BarChart
+            rows={categoriesChart}
+            valueKey="imponibile"
+            labelKey="name"
+            valueFormatter={formatEuro}
+          />
 
-      <h2 style={sectionTitleStyle}>Grafico produttività PV</h2>
-      <BarChart
-        rows={pvProductivityChart}
-        valueKey="produttivita"
-        labelKey="name"
-        valueFormatter={formatEuro}
-        threshold={40}
-      />
+          <h2 style={sectionTitleStyle}>Grafico produttività PV</h2>
+          <BarChart
+            rows={pvProductivityChart}
+            valueKey="produttivita"
+            labelKey="name"
+            valueFormatter={formatEuro}
+            threshold={40}
+          />
 
-      <h2 style={sectionTitleStyle}>Analisi per punto vendita</h2>
-      <table style={table}>
-        <thead>
-          <tr>
-            <th style={th}>PV</th>
-            <th style={th}>Ricavi</th>
-            <th style={th}>Acquisti</th>
-            <th style={th}>Costo personale</th>
-            <th style={th}>Spese manuali</th>
-            <th style={th}>Margine</th>
-            <th style={th}>Ore</th>
-            <th style={th}>Produttività €/h</th>
-            <th style={th}>Costo pers. % ricavi</th>
-            <th style={th}>Stato</th>
-          </tr>
-        </thead>
-        <tbody>
-          {pvAnalysis.map((row) => (
-            <tr key={row.id}>
-              <td style={td}>{row.name}</td>
-              <td style={td}>{formatEuro(row.ricavi)}</td>
-              <td style={td}>{formatEuro(row.acquisti)}</td>
-              <td style={td}>{formatEuro(row.costoPersonale)}</td>
-              <td style={td}>{formatEuro(row.speseManuali)}</td>
-              <td style={{ ...td, ...getMargineStyle(row.margine), fontWeight: 700 }}>
-                {formatEuro(row.margine)}
-              </td>
-              <td style={td}>{formatNumber(row.ore)}</td>
-              <td style={{ ...td, ...getProduttivitaStyle(row.produttivita) }}>
-                {formatEuro(row.produttivita)}
-              </td>
-              <td style={{ ...td, ...getCostoPersonalePercStyle(row.costoPersonalePerc) }}>
-                {formatPercent(row.costoPersonalePerc)}
-              </td>
-              <td style={td}>
-                <span style={badgeStyle(getOverallStatus(row))}>
-                  {getOverallStatusLabel(row)}
-                </span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          <h2 style={sectionTitleStyle}>Analisi per punto vendita</h2>
+          <div style={tableWrapStyle}>
+            <table style={table}>
+              <thead>
+                <tr>
+                  <th style={th}>PV</th>
+                  <th style={th}>Ricavi</th>
+                  <th style={th}>Acquisti</th>
+                  <th style={th}>Costo personale</th>
+                  <th style={th}>Spese manuali</th>
+                  <th style={th}>Margine</th>
+                  <th style={th}>Ore</th>
+                  <th style={th}>Produttività €/h</th>
+                  <th style={th}>Costo pers. % ricavi</th>
+                  <th style={th}>Stato</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pvAnalysis.map((row) => (
+                  <tr key={row.id}>
+                    <td style={td}>{row.name}</td>
+                    <td style={td}>{formatEuro(row.ricavi)}</td>
+                    <td style={td}>{formatEuro(row.acquisti)}</td>
+                    <td style={td}>{formatEuro(row.costoPersonale)}</td>
+                    <td style={td}>{formatEuro(row.speseManuali)}</td>
+                    <td style={{ ...td, ...getMargineStyle(row.margine), fontWeight: 700 }}>
+                      {formatEuro(row.margine)}
+                    </td>
+                    <td style={td}>{formatNumber(row.ore)}</td>
+                    <td style={{ ...td, ...getProduttivitaStyle(row.produttivita) }}>
+                      {formatEuro(row.produttivita)}
+                    </td>
+                    <td style={{ ...td, ...getCostoPersonalePercStyle(row.costoPersonalePerc) }}>
+                      {formatPercent(row.costoPersonalePerc)}
+                    </td>
+                    <td style={td}>
+                      <span style={badgeStyle(getOverallStatus(row))}>
+                        {getOverallStatusLabel(row)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-      <h2 style={sectionTitleStyle}>Analisi per fornitore</h2>
-      <table style={table}>
-        <thead>
-          <tr>
-            <th style={th}>Fornitore</th>
-            <th style={th}>Imponibile</th>
-            <th style={th}>N. fatture</th>
-            <th style={th}>Incidenza % su acquisti</th>
-          </tr>
-        </thead>
-        <tbody>
-          {supplierAnalysis.map((row) => (
-            <tr key={row.id}>
-              <td style={td}>{row.name}</td>
-              <td style={td}>{formatEuro(row.imponibile)}</td>
-              <td style={td}>{row.fatture}</td>
-              <td style={td}>{formatPercent(row.incidenza)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          <h2 style={sectionTitleStyle}>Analisi per fornitore</h2>
+          <div style={tableWrapStyle}>
+            <table style={table}>
+              <thead>
+                <tr>
+                  <th style={th}>Fornitore</th>
+                  <th style={th}>Imponibile</th>
+                  <th style={th}>N. fatture</th>
+                  <th style={th}>Incidenza % su acquisti</th>
+                </tr>
+              </thead>
+              <tbody>
+                {supplierAnalysis.map((row) => (
+                  <tr key={row.id}>
+                    <td style={td}>{row.name}</td>
+                    <td style={td}>{formatEuro(row.imponibile)}</td>
+                    <td style={td}>{row.fatture}</td>
+                    <td style={td}>{formatPercent(row.incidenza)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-      <h2 style={sectionTitleStyle}>Pareto fornitori 80/20</h2>
-      <table style={table}>
-        <thead>
-          <tr>
-            <th style={th}>Fornitore</th>
-            <th style={th}>Imponibile</th>
-            <th style={th}>Incidenza %</th>
-            <th style={th}>Cumulata %</th>
-            <th style={th}>Pareto</th>
-          </tr>
-        </thead>
-        <tbody>
-          {paretoSuppliers.map((row) => (
-            <tr key={row.id}>
-              <td style={td}>{row.name}</td>
-              <td style={td}>{formatEuro(row.imponibile)}</td>
-              <td style={td}>{formatPercent(row.incidenza)}</td>
-              <td style={td}>{formatPercent(row.cumulataPerc)}</td>
-              <td style={td}>
-                <span style={badgeStyle(row.inPareto80 ? 'ok' : 'warn')}>
-                  {row.inPareto80 ? 'Sì' : 'No'}
-                </span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          <h2 style={sectionTitleStyle}>Pareto fornitori 80/20</h2>
+          <div style={tableWrapStyle}>
+            <table style={table}>
+              <thead>
+                <tr>
+                  <th style={th}>Fornitore</th>
+                  <th style={th}>Imponibile</th>
+                  <th style={th}>Incidenza %</th>
+                  <th style={th}>Cumulata %</th>
+                  <th style={th}>Pareto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paretoSuppliers.map((row) => (
+                  <tr key={row.id}>
+                    <td style={td}>{row.name}</td>
+                    <td style={td}>{formatEuro(row.imponibile)}</td>
+                    <td style={td}>{formatPercent(row.incidenza)}</td>
+                    <td style={td}>{formatPercent(row.cumulataPerc)}</td>
+                    <td style={td}>
+                      <span style={badgeStyle(row.inPareto80 ? 'ok' : 'warn')}>
+                        {row.inPareto80 ? 'Sì' : 'No'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-      <h2 style={sectionTitleStyle}>Analisi per categoria</h2>
-      <table style={table}>
-        <thead>
-          <tr>
-            <th style={th}>Categoria</th>
-            <th style={th}>Imponibile</th>
-            <th style={th}>N. fatture</th>
-          </tr>
-        </thead>
-        <tbody>
-          {categoryAnalysis.map((row) => (
-            <tr key={row.id}>
-              <td style={td}>{row.name}</td>
-              <td style={td}>{formatEuro(row.imponibile)}</td>
-              <td style={td}>{row.fatture}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          <h2 style={sectionTitleStyle}>Analisi per categoria</h2>
+          <div style={tableWrapStyle}>
+            <table style={table}>
+              <thead>
+                <tr>
+                  <th style={th}>Categoria</th>
+                  <th style={th}>Imponibile</th>
+                  <th style={th}>N. fatture</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categoryAnalysis.map((row) => (
+                  <tr key={row.id}>
+                    <td style={td}>{row.name}</td>
+                    <td style={td}>{formatEuro(row.imponibile)}</td>
+                    <td style={td}>{row.fatture}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </Layout>
   )
 }
@@ -544,6 +591,7 @@ function badgeStyle(status) {
       borderRadius: 8,
     }
   }
+
   if (status === 'warn') {
     return {
       display: 'inline-block',
@@ -553,6 +601,7 @@ function badgeStyle(status) {
       borderRadius: 8,
     }
   }
+
   return {
     display: 'inline-block',
     padding: '4px 8px',
@@ -644,6 +693,11 @@ const errorTextStyle = {
   marginTop: 16,
 }
 
+const loadingTextStyle = {
+  marginTop: 16,
+  color: '#374151',
+}
+
 const sectionTitleStyle = {
   marginTop: 30,
   color: '#111827',
@@ -657,20 +711,34 @@ const chartWrapStyle = {
   background: '#fff',
 }
 
-const table = {
+const tableWrapStyle = {
   width: '100%',
-  borderCollapse: 'collapse',
+  overflowX: 'auto',
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 16,
   marginTop: 12,
 }
 
+const table = {
+  width: '100%',
+  borderCollapse: 'collapse',
+  minWidth: 900,
+}
+
 const th = {
-  border: '1px solid #ccc',
-  padding: 8,
+  borderBottom: '1px solid #e5e7eb',
+  padding: 10,
   textAlign: 'left',
-  background: '#f5f5f5',
+  background: '#f9fafb',
+  color: '#111827',
+  fontSize: 14,
+  whiteSpace: 'nowrap',
 }
 
 const td = {
-  border: '1px solid #ccc',
-  padding: 8,
+  borderBottom: '1px solid #f1f5f9',
+  padding: 10,
+  fontSize: 14,
+  color: '#111827',
 }
