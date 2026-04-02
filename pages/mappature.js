@@ -12,7 +12,7 @@ const initialForm = {
 
 export default function Mappature() {
   const [user, setUser] = useState(null)
-  const [rows, setRows] = useState([])
+  const [allRows, setAllRows] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [pointsOfSale, setPointsOfSale] = useState([])
   const [categories, setCategories] = useState([])
@@ -22,6 +22,9 @@ export default function Mappature() {
   const [isApplying, setIsApplying] = useState(false)
   const [pageSize, setPageSize] = useState(10)
   const [currentPage, setCurrentPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -41,22 +44,12 @@ export default function Mappature() {
     if (user) loadData()
   }, [user])
 
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [pageSize, rows.length])
-
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
-
-  const paginatedRows = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize
-    return rows.slice(startIndex, startIndex + pageSize)
-  }, [rows, currentPage, pageSize])
-
   async function handleLogout() {
     await supabase.auth.signOut()
   }
 
   async function loadData() {
+    setLoading(true)
     setMessage('')
 
     const [
@@ -66,9 +59,9 @@ export default function Mappature() {
       { data: categoriesData, error: categoriesError },
     ] = await Promise.all([
       supabase.from('supplier_mappings').select('*').order('created_at', { ascending: false }),
-      supabase.from('suppliers').select('*').order('name'),
-      supabase.from('points_of_sale').select('*').order('name'),
-      supabase.from('categories').select('*').order('name'),
+      supabase.from('suppliers').select('*').order('name', { ascending: true }),
+      supabase.from('points_of_sale').select('*').order('name', { ascending: true }),
+      supabase.from('categories').select('*').order('name', { ascending: true }),
     ])
 
     if (mappingsError || suppliersError || pvError || categoriesError) {
@@ -79,14 +72,55 @@ export default function Mappature() {
           categoriesError?.message ||
           'Errore caricamento dati'
       )
+      setLoading(false)
       return
     }
 
-    setRows(mappingsData || [])
+    setAllRows(mappingsData || [])
     setSuppliers(suppliersData || [])
     setPointsOfSale(pvData || [])
     setCategories(categoriesData || [])
+    setLoading(false)
   }
+
+  const suppliersMap = useMemo(() => {
+    const map = {}
+    for (const row of suppliers) {
+      map[String(row.id)] = row.name
+    }
+    return map
+  }, [suppliers])
+
+  const pvMap = useMemo(() => {
+    const map = {}
+    for (const row of pointsOfSale) {
+      map[String(row.id)] = row.name
+    }
+    return map
+  }, [pointsOfSale])
+
+  const categoriesMap = useMemo(() => {
+    const map = {}
+    for (const row of categories) {
+      map[String(row.id)] = row.name
+    }
+    return map
+  }, [categories])
+
+  const rows = useMemo(() => {
+    return [...allRows].sort((a, b) => Number(b.id || 0) - Number(a.id || 0))
+  }, [allRows])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [pageSize, rows.length])
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+
+  const paginatedRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize
+    return rows.slice(startIndex, startIndex + pageSize)
+  }, [rows, currentPage, pageSize])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -104,33 +138,53 @@ export default function Mappature() {
       return
     }
 
+    const duplicate = allRows.find((row) => {
+      if (editingId && row.id === editingId) return false
+      return String(row.supplier_id) === String(payload.supplier_id)
+    })
+
+    if (duplicate) {
+      setMessage('Esiste già una mappatura per questo fornitore.')
+      return
+    }
+
+    setSaving(true)
+
     if (editingId) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('supplier_mappings')
         .update(payload)
         .eq('id', editingId)
+        .select()
+        .single()
 
       if (error) {
         setMessage(error.message)
+        setSaving(false)
         return
       }
 
+      setAllRows((prev) => prev.map((row) => (row.id === editingId ? data : row)))
       setMessage('Mappatura aggiornata.')
     } else {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('supplier_mappings')
         .insert(payload)
+        .select()
+        .single()
 
       if (error) {
         setMessage(error.message)
+        setSaving(false)
         return
       }
 
+      setAllRows((prev) => [data, ...prev])
       setMessage('Mappatura salvata.')
     }
 
     resetForm()
-    loadData()
+    setSaving(false)
   }
 
   function handleEdit(row) {
@@ -142,11 +196,15 @@ export default function Mappature() {
       is_general: !!row.is_general,
     })
     setMessage('')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   async function handleDelete(id) {
     const conferma = window.confirm('Vuoi davvero cancellare questa mappatura?')
     if (!conferma) return
+
+    setDeletingId(id)
+    setMessage('')
 
     const { error } = await supabase
       .from('supplier_mappings')
@@ -155,13 +213,16 @@ export default function Mappature() {
 
     if (error) {
       setMessage(error.message)
+      setDeletingId(null)
       return
     }
+
+    setAllRows((prev) => prev.filter((row) => row.id !== id))
 
     if (editingId === id) resetForm()
 
     setMessage('Mappatura cancellata.')
-    loadData()
+    setDeletingId(null)
   }
 
   async function handleApplyMappings() {
@@ -169,22 +230,25 @@ export default function Mappature() {
     setIsApplying(true)
 
     try {
-      const { data: mappings, error: mappingsError } = await supabase
-        .from('supplier_mappings')
-        .select('*')
+      const mappingsBySupplier = new Map()
+      for (const mapping of allRows) {
+        if (mapping.supplier_id) {
+          mappingsBySupplier.set(String(mapping.supplier_id), mapping)
+        }
+      }
 
-      if (mappingsError) throw new Error(mappingsError.message)
-
-      const { data: invoices, error: invoicesError } = await supabase
-        .from('invoices')
-        .select('*')
-
-      if (invoicesError) throw new Error(invoicesError.message)
-
-      if (!mappings || mappings.length === 0) {
+      if (mappingsBySupplier.size === 0) {
         setMessage('Nessuna mappatura da applicare.')
         setIsApplying(false)
         return
+      }
+
+      const { data: invoices, error: invoicesError } = await supabase
+        .from('invoices')
+        .select('id, supplier_id, point_of_sale_id, category_id, is_general')
+
+      if (invoicesError) {
+        throw new Error(invoicesError.message)
       }
 
       if (!invoices || invoices.length === 0) {
@@ -193,40 +257,55 @@ export default function Mappature() {
         return
       }
 
-      const mappingsBySupplier = new Map()
-      for (const mapping of mappings) {
-        if (mapping.supplier_id) {
-          mappingsBySupplier.set(mapping.supplier_id, mapping)
-        }
-      }
+      const invoicesToUpdate = invoices.filter((invoice) => {
+        const mapping = mappingsBySupplier.get(String(invoice.supplier_id))
+        if (!mapping) return false
 
-      const invoicesToUpdate = invoices.filter((inv) => mappingsBySupplier.has(inv.supplier_id))
+        const nextPointOfSaleId = mapping.is_general ? null : mapping.point_of_sale_id || null
+        const nextCategoryId = mapping.category_id || null
+        const nextIsGeneral = !!mapping.is_general
+
+        const samePv = String(invoice.point_of_sale_id || '') === String(nextPointOfSaleId || '')
+        const sameCategory = String(invoice.category_id || '') === String(nextCategoryId || '')
+        const sameGeneral = !!invoice.is_general === nextIsGeneral
+
+        return !(samePv && sameCategory && sameGeneral)
+      })
 
       if (invoicesToUpdate.length === 0) {
-        setMessage('Nessuna fattura compatibile con le mappature.')
+        setMessage('Nessuna fattura da aggiornare: le mappature sono già applicate.')
         setIsApplying(false)
         return
       }
 
+      const batchSize = 25
       let updatedCount = 0
 
-      for (const invoice of invoicesToUpdate) {
-        const mapping = mappingsBySupplier.get(invoice.supplier_id)
+      for (let i = 0; i < invoicesToUpdate.length; i += batchSize) {
+        const batch = invoicesToUpdate.slice(i, i + batchSize)
 
-        const payload = {
-          point_of_sale_id: mapping.is_general ? null : mapping.point_of_sale_id || null,
-          category_id: mapping.category_id || null,
-          is_general: !!mapping.is_general,
-        }
+        await Promise.all(
+          batch.map(async (invoice) => {
+            const mapping = mappingsBySupplier.get(String(invoice.supplier_id))
 
-        const { error } = await supabase
-          .from('invoices')
-          .update(payload)
-          .eq('id', invoice.id)
+            const payload = {
+              point_of_sale_id: mapping.is_general ? null : mapping.point_of_sale_id || null,
+              category_id: mapping.category_id || null,
+              is_general: !!mapping.is_general,
+            }
 
-        if (error) throw new Error(error.message)
+            const { error } = await supabase
+              .from('invoices')
+              .update(payload)
+              .eq('id', invoice.id)
 
-        updatedCount += 1
+            if (error) {
+              throw new Error(error.message)
+            }
+
+            updatedCount += 1
+          })
+        )
       }
 
       setMessage(`Mappature applicate a ${updatedCount} fatture.`)
@@ -243,15 +322,15 @@ export default function Mappature() {
   }
 
   function getSupplierName(id) {
-    return suppliers.find((s) => String(s.id) === String(id))?.name || ''
+    return suppliersMap[String(id)] || ''
   }
 
   function getPvName(id) {
-    return pointsOfSale.find((p) => String(p.id) === String(id))?.name || ''
+    return pvMap[String(id)] || ''
   }
 
   function getCategoryName(id) {
-    return categories.find((c) => String(c.id) === String(id))?.name || ''
+    return categoriesMap[String(id)] || ''
   }
 
   function goToPrevPage() {
@@ -281,8 +360,8 @@ export default function Mappature() {
         <button
           type="button"
           onClick={handleApplyMappings}
-          disabled={isApplying}
-          style={isApplying ? disabledButtonStyle : primaryButtonStyle}
+          disabled={isApplying || loading}
+          style={isApplying || loading ? disabledButtonStyle : primaryButtonStyle}
         >
           {isApplying ? 'Applicazione in corso...' : 'Applica mappature alle fatture'}
         </button>
@@ -300,10 +379,7 @@ export default function Mappature() {
         </select>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        style={formWrapStyle}
-      >
+      <form onSubmit={handleSubmit} style={formWrapStyle}>
         <select
           value={form.supplier_id}
           onChange={(e) => setForm({ ...form, supplier_id: e.target.value })}
@@ -361,9 +437,14 @@ export default function Mappature() {
         </select>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button type="submit" style={primaryButtonStyle}>
-            {editingId ? 'Aggiorna' : 'Salva'}
+          <button
+            type="submit"
+            style={saving ? disabledButtonStyle : primaryButtonStyle}
+            disabled={saving}
+          >
+            {saving ? 'Salvataggio...' : editingId ? 'Aggiorna' : 'Salva'}
           </button>
+
           {editingId && (
             <button type="button" onClick={resetForm} style={secondaryButtonStyle}>
               Annulla
@@ -376,7 +457,9 @@ export default function Mappature() {
 
       <h2 style={sectionTitleStyle}>Elenco mappature</h2>
 
-      {rows.length === 0 ? (
+      {loading ? (
+        <p>Caricamento...</p>
+      ) : rows.length === 0 ? (
         <p>Nessuna mappatura presente.</p>
       ) : (
         <>
@@ -389,37 +472,50 @@ export default function Mappature() {
             </span>
           </div>
 
-          <table style={table}>
-            <thead>
-              <tr>
-                <th style={th}>Fornitore</th>
-                <th style={th}>PV</th>
-                <th style={th}>Categoria</th>
-                <th style={th}>Generale</th>
-                <th style={th}>Azioni</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedRows.map((row) => (
-                <tr key={row.id}>
-                  <td style={td}>{getSupplierName(row.supplier_id)}</td>
-                  <td style={td}>{row.is_general ? '' : getPvName(row.point_of_sale_id)}</td>
-                  <td style={td}>{getCategoryName(row.category_id)}</td>
-                  <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
-                  <td style={td}>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="button" onClick={() => handleEdit(row)} style={smallButtonStyle}>
-                        Modifica
-                      </button>
-                      <button type="button" onClick={() => handleDelete(row.id)} style={smallDangerButtonStyle}>
-                        Cancella
-                      </button>
-                    </div>
-                  </td>
+          <div style={tableWrapStyle}>
+            <table style={table}>
+              <thead>
+                <tr>
+                  <th style={th}>Fornitore</th>
+                  <th style={th}>PV</th>
+                  <th style={th}>Categoria</th>
+                  <th style={th}>Generale</th>
+                  <th style={th}>Azioni</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {paginatedRows.map((row) => (
+                  <tr key={row.id}>
+                    <td style={td}>{getSupplierName(row.supplier_id)}</td>
+                    <td style={td}>{row.is_general ? '' : getPvName(row.point_of_sale_id)}</td>
+                    <td style={td}>{getCategoryName(row.category_id)}</td>
+                    <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
+                    <td style={td}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(row)}
+                          style={smallButtonStyle}
+                          disabled={deletingId === row.id || isApplying}
+                        >
+                          Modifica
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(row.id)}
+                          style={deletingId === row.id ? disabledDangerButtonStyle : smallDangerButtonStyle}
+                          disabled={deletingId === row.id || isApplying}
+                        >
+                          {deletingId === row.id ? 'Cancellazione...' : 'Cancella'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <div style={paginationWrapStyle}>
             <button
@@ -558,6 +654,16 @@ const smallDangerButtonStyle = {
   fontSize: 13,
 }
 
+const disabledDangerButtonStyle = {
+  padding: '8px 10px',
+  border: '1px solid #fca5a5',
+  borderRadius: 8,
+  background: '#fef2f2',
+  color: '#fca5a5',
+  cursor: 'not-allowed',
+  fontSize: 13,
+}
+
 const messageStyle = {
   marginTop: 16,
   color: '#111827',
@@ -587,20 +693,34 @@ const paginationWrapStyle = {
   marginTop: 16,
 }
 
-const table = {
-  borderCollapse: 'collapse',
+const tableWrapStyle = {
   width: '100%',
+  overflowX: 'auto',
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 16,
   marginTop: 12,
 }
 
+const table = {
+  borderCollapse: 'collapse',
+  width: '100%',
+  minWidth: 760,
+}
+
 const th = {
-  border: '1px solid #ccc',
-  padding: 8,
+  borderBottom: '1px solid #e5e7eb',
+  padding: 10,
   textAlign: 'left',
-  background: '#f5f5f5',
+  background: '#f9fafb',
+  color: '#111827',
+  fontSize: 14,
+  whiteSpace: 'nowrap',
 }
 
 const td = {
-  border: '1px solid #ccc',
-  padding: 8,
+  borderBottom: '1px solid #f1f5f9',
+  padding: 10,
+  fontSize: 14,
+  color: '#111827',
 }
