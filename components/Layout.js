@@ -2,86 +2,45 @@ import Link from 'next/link'
 import Header from './Header'
 
 const menuItems = [
-  {
-    href: '/',
-    label: 'Home',
-    icon: '🏠',
-    note: 'Panoramica generale',
-  },
-  {
-    href: '/dashboard',
-    label: 'Dashboard',
-    icon: '📊',
-    note: 'Sintesi mensile e semafori',
-  },
-  {
-    href: '/analisi',
-    label: 'Analisi avanzata',
-    icon: '📈',
-    note: 'Pareto, grafici e confronto dati',
-  },
-  {
-    href: '/fatture',
-    label: 'Fatture',
-    icon: '🧾',
-    note: 'Gestione acquisti e imponibili',
-  },
-  {
-    href: '/ricavi',
-    label: 'Ricavi',
-    icon: '💶',
-    note: 'Inserimento ricavi per PV',
-  },
-  {
-    href: '/costi-personale',
-    label: 'Costi personale',
-    icon: '👥',
-    note: 'Costo lavoro e ore',
-  },
-  {
-    href: '/spese-manuali',
-    label: 'Spese manuali',
-    icon: '📝',
-    note: 'Costi extra e costi generali',
-  },
-  {
-    href: '/import-xml',
-    label: 'Import XML',
-    icon: '📂',
-    note: 'Importazione FatturaPA',
-  },
-  {
-    href: '/mappature',
-    label: 'Mappature fornitori',
-    icon: '🧩',
-    note: 'Regole automatiche di assegnazione',
-  },
-  {
-    href: '/fornitori',
-    label: 'Fornitori',
-    icon: '🏷️',
-    note: 'Anagrafica, P.IVA e codice fiscale',
-  },
+  { href: '/', label: 'Home' },
+  { href: '/dashboard', label: 'Dashboard' },
+  { href: '/analisi', label: 'Analisi avanzata' },
+  { href: '/fatture', label: 'Fatture' },
+  { href: '/ricavi', label: 'Ricavi' },
+  { href: '/costi-personale', label: 'Costi personale' },
+  { href: '/spese-manuali', label: 'Spese manuali' },
+  { href: '/import-xml', label: 'Import XML' },
+  { href: '/mappature', label: 'Mappature fornitori' },
+  { href: '/fornitori', label: 'Fornitori' },
 ]
 
-export default function Layout({ children, onLogout, hideMenu = false }) {
+export default function Layout({
+  children,
+  onLogout,
+  hideMenu = false,
+  compactMenu = false,
+}) {
   return (
     <div style={pageStyle}>
       <div style={containerStyle}>
         <Header onLogout={onLogout} />
 
         {!hideMenu && (
-          <div style={menuSectionStyle}>
-            {menuItems.map((item) => (
-              <MenuLink
-                key={item.href}
-                href={item.href}
-                label={item.label}
-                icon={item.icon}
-                note={item.note}
-              />
-            ))}
-          </div>
+          compactMenu ? (
+            <div style={compactMenuWrapStyle}>
+              {menuItems.map((item) => (
+                <Link key={item.href} href={item.href} style={compactMenuLinkStyle}>
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div style={menuSectionStyle}>
+              {menuItems.map((item) => (
+                <MenuCard key={item.href} href={item.href} label={item.label} />
+              ))}
+            </div>
+          )
         )}
 
         <div style={contentCardStyle}>{children}</div>
@@ -90,18 +49,10 @@ export default function Layout({ children, onLogout, hideMenu = false }) {
   )
 }
 
-function MenuLink({ href, label, icon, note }) {
+function MenuCard({ href, label }) {
   return (
     <Link href={href} style={menuCardStyle}>
-      <div style={menuTopRowStyle}>
-        <div style={menuIconStyle}>{icon}</div>
-        <div style={menuArrowStyle}>→</div>
-      </div>
-
-      <div>
-        <div style={menuTitleStyle}>{label}</div>
-        <div style={menuNoteStyle}>{note}</div>
-      </div>
+      <div style={menuCardTitleStyle}>{label}</div>
     </Link>
   )
 }
@@ -127,9 +78,9 @@ const menuSectionStyle = {
 
 const menuCardStyle = {
   display: 'flex',
-  flexDirection: 'column',
-  justifyContent: 'space-between',
-  minHeight: 120,
+  alignItems: 'center',
+  justifyContent: 'center',
+  minHeight: 72,
   padding: 18,
   border: '1px solid #e5e7eb',
   borderRadius: 16,
@@ -137,43 +88,34 @@ const menuCardStyle = {
   textDecoration: 'none',
   color: '#111827',
   boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
+  fontWeight: 700,
 }
 
-const menuTopRowStyle = {
+const menuCardTitleStyle = {
+  fontSize: 16,
+  textAlign: 'center',
+}
+
+const compactMenuWrapStyle = {
   display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: 8,
   marginBottom: 18,
 }
 
-const menuIconStyle = {
-  width: 40,
-  height: 40,
-  borderRadius: 12,
-  display: 'flex',
+const compactMenuLinkStyle = {
+  display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  background: '#f3f4f6',
-  fontSize: 20,
-}
-
-const menuArrowStyle = {
-  color: '#9ca3af',
-  fontSize: 20,
-  fontWeight: 700,
-}
-
-const menuTitleStyle = {
-  fontSize: 17,
-  fontWeight: 700,
-  color: '#111827',
-  marginBottom: 6,
-}
-
-const menuNoteStyle = {
-  fontSize: 13,
-  color: '#6b7280',
-  lineHeight: 1.4,
+  padding: '7px 10px',
+  border: '1px solid #d1d5db',
+  borderRadius: 999,
+  background: '#ffffff',
+  textDecoration: 'none',
+  color: '#374151',
+  fontSize: 12,
+  fontWeight: 600,
+  lineHeight: 1,
 }
 
 const contentCardStyle = {
