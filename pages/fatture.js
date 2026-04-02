@@ -29,6 +29,7 @@ export default function Fatture() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [updatingCellId, setUpdatingCellId] = useState(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -308,6 +309,75 @@ export default function Fatture() {
     setDeletingId(null)
   }
 
+  async function updateInvoiceInline(invoiceId, updates, successMessage = 'Fattura aggiornata.') {
+    setUpdatingCellId(invoiceId)
+    setMessage('')
+
+    const { data, error } = await supabase
+      .from('invoices')
+      .update(updates)
+      .eq('id', invoiceId)
+      .select()
+      .single()
+
+    if (error) {
+      setMessage(error.message)
+      setUpdatingCellId(null)
+      return
+    }
+
+    setAllRows((prev) => prev.map((row) => (row.id === invoiceId ? data : row)))
+    setMessage(successMessage)
+    setUpdatingCellId(null)
+  }
+
+  async function handleInlinePvChange(invoiceId, pointOfSaleId, row) {
+    if (row.is_general) {
+      setMessage('Togli prima il flag "Generale" per assegnare un punto vendita.')
+      return
+    }
+
+    const value = pointOfSaleId || null
+
+    await updateInvoiceInline(
+      invoiceId,
+      { point_of_sale_id: value },
+      'Punto vendita aggiornato.'
+    )
+  }
+
+  async function handleInlineCategoryChange(invoiceId, categoryId) {
+    const value = categoryId || null
+
+    await updateInvoiceInline(
+      invoiceId,
+      { category_id: value },
+      'Categoria aggiornata.'
+    )
+  }
+
+  async function handleInlineGeneralChange(invoiceId, checked) {
+    if (checked) {
+      await updateInvoiceInline(
+        invoiceId,
+        {
+          is_general: true,
+          point_of_sale_id: null,
+        },
+        'Fattura impostata come costo generale.'
+      )
+      return
+    }
+
+    await updateInvoiceInline(
+      invoiceId,
+      {
+        is_general: false,
+      },
+      'Flag costo generale rimosso.'
+    )
+  }
+
   function resetForm() {
     setForm(initialForm)
     setEditingId(null)
@@ -512,16 +582,62 @@ export default function Fatture() {
                     <td style={td}>{row.invoice_number || ''}</td>
                     <td style={td}>{formatEuro(row.amount)}</td>
                     <td style={td}>{getSupplierName(row.supplier_id)}</td>
-                    <td style={td}>{row.is_general ? '' : getPvName(row.point_of_sale_id)}</td>
-                    <td style={td}>{getCategoryName(row.category_id)}</td>
-                    <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
+
+                    <td style={td}>
+                      {row.is_general ? (
+                        <span style={inlineMutedTextStyle}>Generale</span>
+                      ) : (
+                        <select
+                          value={row.point_of_sale_id || ''}
+                          onChange={(e) => handleInlinePvChange(row.id, e.target.value, row)}
+                          style={inlineSelectStyle}
+                          disabled={updatingCellId === row.id}
+                        >
+                          <option value="">Seleziona PV</option>
+                          {pointsOfSale.map((pv) => (
+                            <option key={pv.id} value={pv.id}>
+                              {pv.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </td>
+
+                    <td style={td}>
+                      <select
+                        value={row.category_id || ''}
+                        onChange={(e) => handleInlineCategoryChange(row.id, e.target.value)}
+                        style={inlineSelectStyle}
+                        disabled={updatingCellId === row.id}
+                      >
+                        <option value="">Seleziona categoria</option>
+                        {categories.map((cat) => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+
+                    <td style={td}>
+                      <label style={inlineCheckboxLabelStyle}>
+                        <input
+                          type="checkbox"
+                          checked={!!row.is_general}
+                          onChange={(e) => handleInlineGeneralChange(row.id, e.target.checked)}
+                          disabled={updatingCellId === row.id}
+                        />
+                        {' '}Sì
+                      </label>
+                    </td>
+
                     <td style={td}>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <button
                           type="button"
                           onClick={() => handleEdit(row)}
                           style={smallButtonStyle}
-                          disabled={deletingId === row.id}
+                          disabled={deletingId === row.id || updatingCellId === row.id}
                         >
                           Modifica
                         </button>
@@ -530,7 +646,7 @@ export default function Fatture() {
                           type="button"
                           onClick={() => handleDelete(row.id)}
                           style={deletingId === row.id ? disabledDangerButtonStyle : smallDangerButtonStyle}
-                          disabled={deletingId === row.id}
+                          disabled={deletingId === row.id || updatingCellId === row.id}
                         >
                           {deletingId === row.id ? 'Cancellazione...' : 'Cancella'}
                         </button>
@@ -780,4 +896,24 @@ const td = {
   padding: 10,
   fontSize: 14,
   color: '#111827',
+}
+
+const inlineSelectStyle = {
+  padding: '8px 10px',
+  border: '1px solid #d1d5db',
+  borderRadius: 8,
+  background: '#fff',
+  fontSize: 13,
+  minWidth: 150,
+}
+
+const inlineCheckboxLabelStyle = {
+  fontSize: 13,
+  color: '#111827',
+  whiteSpace: 'nowrap',
+}
+
+const inlineMutedTextStyle = {
+  fontSize: 13,
+  color: '#6b7280',
 }
