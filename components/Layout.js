@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import Header from './Header'
-import useAuthUser from '../hooks/useAuthUser'
 
 const menuItems = [
   { href: '/', label: 'Home', icon: '🏠', note: 'Panoramica generale' },
@@ -15,40 +14,11 @@ const menuItems = [
   { href: '/fornitori', label: 'Fornitori', icon: '🏷️', note: 'Anagrafica, P.IVA e codice fiscale' },
 ]
 
-export default function Layout({ children, compactMenu = false }) {
-  const { user, authLoading, logout } = useAuthUser()
-
-  if (authLoading) {
-    return (
-      <div style={pageStyle}>
-        <div style={containerStyle}>
-          <div style={loadingCardStyle}>
-            <p style={loadingTextStyle}>Caricamento...</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return (
-      <div style={pageStyle}>
-        <div style={containerStyle}>
-          <div style={loadingCardStyle}>
-            <p style={loadingTextStyle}>Devi accedere</p>
-            <Link href="/" style={loginLinkStyle}>
-              Torna alla home
-            </Link>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
+export default function Layout({ children, onLogout, compactMenu = false }) {
   return (
     <div style={pageStyle}>
       <div style={containerStyle}>
-        <Header onLogout={logout} />
+        <Header onLogout={onLogout} />
 
         {compactMenu ? (
           <div style={compactMenuStyle}>
@@ -104,31 +74,6 @@ const containerStyle = {
   maxWidth: 1240,
   margin: '0 auto',
   padding: '32px 24px 48px',
-}
-
-const loadingCardStyle = {
-  background: '#ffffff',
-  border: '1px solid #e5e7eb',
-  borderRadius: 18,
-  padding: 24,
-  boxShadow: '0 10px 30px rgba(0,0,0,0.05)',
-  textAlign: 'center',
-  maxWidth: 420,
-  margin: '80px auto 0',
-}
-
-const loadingTextStyle = {
-  margin: 0,
-  marginBottom: 12,
-  color: '#111827',
-  fontSize: 16,
-  fontWeight: 600,
-}
-
-const loginLinkStyle = {
-  color: '#111827',
-  textDecoration: 'none',
-  fontWeight: 600,
 }
 
 const menuSectionStyle = {
