@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabaseClient'
 import Layout from '../components/Layout'
 
@@ -258,6 +259,79 @@ export default function Analisi() {
     [pvAnalysis]
   )
 
+  function exportExcel() {
+    const workbook = XLSX.utils.book_new()
+
+    const riepilogoRows = [
+      {
+        Ricavi: roundValue(summary.ricavi),
+        Acquisti_Imponibile: roundValue(summary.acquisti),
+        Costo_Personale: roundValue(summary.costoPersonale),
+        Spese_Manuali: roundValue(summary.speseManuali),
+        Margine: roundValue(summary.margine),
+      },
+    ]
+
+    const pvRows = pvAnalysis.map((row) => ({
+      PV: row.name,
+      Ricavi: roundValue(row.ricavi),
+      Acquisti: roundValue(row.acquisti),
+      Costo_Personale: roundValue(row.costoPersonale),
+      Spese_Manuali: roundValue(row.speseManuali),
+      Margine: roundValue(row.margine),
+      Ore: roundValue(row.ore),
+      Produttivita_Euro_h: roundValue(row.produttivita),
+      Costo_Personale_Percento_Ricavi: roundValue(row.costoPersonalePerc),
+      Stato: getOverallStatusLabel(row),
+    }))
+
+    const fornitoriRows = supplierAnalysis.map((row) => ({
+      Fornitore: row.name,
+      Imponibile: roundValue(row.imponibile),
+      Numero_Fatture: row.fatture,
+      Incidenza_Percento: roundValue(row.incidenza),
+    }))
+
+    const paretoRows = paretoSuppliers.map((row) => ({
+      Fornitore: row.name,
+      Imponibile: roundValue(row.imponibile),
+      Incidenza_Percento: roundValue(row.incidenza),
+      Cumulata_Percento: roundValue(row.cumulataPerc),
+      Pareto_80_20: row.inPareto80 ? 'Si' : 'No',
+    }))
+
+    const categorieRows = categoryAnalysis.map((row) => ({
+      Categoria: row.name,
+      Imponibile: roundValue(row.imponibile),
+      Numero_Fatture: row.fatture,
+    }))
+
+    const filtroRows = [
+      {
+        Mese: selectedMonth || 'Tutti i mesi',
+        PV:
+          data.pointsOfSale.find((pv) => String(pv.id) === String(selectedPv))?.name || 'Tutti i PV',
+      },
+    ]
+
+    appendSheet(workbook, filtroRows, 'Filtri')
+    appendSheet(workbook, riepilogoRows, 'Riepilogo')
+    appendSheet(workbook, pvRows, 'Analisi PV')
+    appendSheet(workbook, fornitoriRows, 'Fornitori')
+    appendSheet(workbook, paretoRows, 'Pareto')
+    appendSheet(workbook, categorieRows, 'Categorie')
+
+    XLSX.writeFile(workbook, buildFileName('analisi_avanzata', 'xlsx'))
+  }
+
+  function buildFileName(base, extension) {
+    const monthPart = selectedMonth || 'tutti_i_mesi'
+    const pvName =
+      data.pointsOfSale.find((pv) => String(pv.id) === String(selectedPv))?.name || 'tutti_i_pv'
+
+    return `${base}_${sanitizeFileName(monthPart)}_${sanitizeFileName(pvName)}.${extension}`
+  }
+
   if (!user) {
     return (
       <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
@@ -483,6 +557,15 @@ export default function Analisi() {
               </tbody>
             </table>
           </div>
+
+          <div style={exportSectionStyle}>
+            <h2 style={sectionTitleStyle}>Export</h2>
+            <div style={exportButtonsWrapStyle}>
+              <button type="button" onClick={exportExcel} style={primaryButtonStyle}>
+                Export Excel
+              </button>
+            </div>
+          </div>
         </>
       )}
     </Layout>
@@ -543,6 +626,12 @@ function BarChart({ rows, valueKey, labelKey, valueFormatter, threshold = null }
       })}
     </div>
   )
+}
+
+function appendSheet(workbook, rows, sheetName) {
+  const safeRows = rows && rows.length ? rows : [{ Nessun_dato: '' }]
+  const worksheet = XLSX.utils.json_to_sheet(safeRows)
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName)
 }
 
 function getOverallStatus(row) {
@@ -643,6 +732,18 @@ function formatNumber(value) {
   return Number(value || 0).toFixed(2)
 }
 
+function roundValue(value) {
+  return Number(value || 0).toFixed(2)
+}
+
+function sanitizeFileName(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, '_')
+    .replace(/[^\w\-]/g, '')
+    .toLowerCase()
+}
+
 const pageHeaderStyle = {
   display: 'flex',
   gap: 16,
@@ -686,6 +787,17 @@ const secondaryButtonStyle = {
   background: '#fff',
   cursor: 'pointer',
   fontSize: 14,
+}
+
+const primaryButtonStyle = {
+  padding: '10px 14px',
+  border: '1px solid #111827',
+  borderRadius: 10,
+  background: '#111827',
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
+  fontWeight: 600,
 }
 
 const errorTextStyle = {
@@ -741,4 +853,16 @@ const td = {
   padding: 10,
   fontSize: 14,
   color: '#111827',
+}
+
+const exportSectionStyle = {
+  marginTop: 36,
+  marginBottom: 20,
+}
+
+const exportButtonsWrapStyle = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 12,
+  marginTop: 12,
 }
