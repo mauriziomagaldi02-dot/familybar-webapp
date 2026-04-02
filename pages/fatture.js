@@ -14,6 +14,7 @@ const initialForm = {
 }
 
 const NO_PV_FILTER_VALUE = '__NO_PV__'
+const NO_CATEGORY_FILTER_VALUE = '__NO_CATEGORY__'
 
 export default function Fatture() {
   const [user, setUser] = useState(null)
@@ -27,6 +28,7 @@ export default function Fatture() {
   const [editingId, setEditingId] = useState(null)
   const [selectedMonth, setSelectedMonth] = useState('')
   const [selectedPvFilter, setSelectedPvFilter] = useState('')
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [currentPage, setCurrentPage] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -152,6 +154,16 @@ export default function Fatture() {
       }
     }
 
+    if (selectedCategoryFilter) {
+      if (selectedCategoryFilter === NO_CATEGORY_FILTER_VALUE) {
+        result = result.filter((row) => !row.category_id)
+      } else {
+        result = result.filter(
+          (row) => String(row.category_id || '') === String(selectedCategoryFilter)
+        )
+      }
+    }
+
     result.sort((a, b) => {
       const dateCompare = String(b.invoice_date || '').localeCompare(String(a.invoice_date || ''))
       if (dateCompare !== 0) return dateCompare
@@ -159,11 +171,11 @@ export default function Fatture() {
     })
 
     return result
-  }, [allRows, selectedMonth, selectedPvFilter])
+  }, [allRows, selectedMonth, selectedPvFilter, selectedCategoryFilter])
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [selectedMonth, selectedPvFilter, pageSize, filteredRows.length])
+  }, [selectedMonth, selectedPvFilter, selectedCategoryFilter, pageSize, filteredRows.length])
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
 
@@ -455,6 +467,21 @@ export default function Fatture() {
           {pointsOfSale.map((pv) => (
             <option key={pv.id} value={pv.id}>
               {pv.name}
+            </option>
+          ))}
+        </select>
+
+        <label style={filterLabelStyle}>Categoria</label>
+        <select
+          value={selectedCategoryFilter}
+          onChange={(e) => setSelectedCategoryFilter(e.target.value)}
+          style={filterInputStyle}
+        >
+          <option value="">Tutte le categorie</option>
+          <option value={NO_CATEGORY_FILTER_VALUE}>Senza categoria</option>
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.id}>
+              {cat.name}
             </option>
           ))}
         </select>
