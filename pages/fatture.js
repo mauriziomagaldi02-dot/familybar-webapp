@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
+import Layout from '../components/Layout'
 
 const initialForm = {
   supplier_id: '',
@@ -45,10 +46,14 @@ export default function Fatture() {
   const mappingsBySupplier = useMemo(() => {
     const map = new Map()
     for (const row of mappings) {
-      if (row.supplier_id) map.set(row.supplier_id, row)
+      if (row.supplier_id) map.set(String(row.supplier_id), row)
     }
     return map
   }, [mappings])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+  }
 
   async function loadData() {
     setMessage('')
@@ -101,7 +106,7 @@ export default function Fatture() {
   }
 
   function applySupplierMapping(supplierId, currentForm = form) {
-    const mapping = mappingsBySupplier.get(supplierId)
+    const mapping = mappingsBySupplier.get(String(supplierId))
 
     if (!mapping) {
       return {
@@ -127,7 +132,7 @@ export default function Fatture() {
       supplier_id: form.supplier_id || null,
       invoice_number: form.invoice_number || null,
       invoice_date: form.invoice_date || null,
-      amount: form.amount ? Number(form.amount) : null, // imponibile
+      amount: form.amount ? Number(form.amount) : null,
       point_of_sale_id: form.is_general ? null : form.point_of_sale_id || null,
       category_id: form.category_id || null,
       is_general: !!form.is_general,
@@ -202,15 +207,15 @@ export default function Fatture() {
   }
 
   function getSupplierName(id) {
-    return suppliers.find((s) => s.id === id)?.name || ''
+    return suppliers.find((s) => String(s.id) === String(id))?.name || ''
   }
 
   function getPvName(id) {
-    return pointsOfSale.find((p) => p.id === id)?.name || ''
+    return pointsOfSale.find((p) => String(p.id) === String(id))?.name || ''
   }
 
   function getCategoryName(id) {
-    return categories.find((c) => c.id === id)?.name || ''
+    return categories.find((c) => String(c.id) === String(id))?.name || ''
   }
 
   if (!user) {
@@ -224,31 +229,32 @@ export default function Fatture() {
   }
 
   return (
-    <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-        <h1 style={{ margin: 0 }}>Fatture</h1>
-        <Link href="/">Home</Link>
+    <Layout onLogout={handleLogout} compactMenu>
+      <div style={pageHeaderStyle}>
+        <h1 style={pageTitleStyle}>Fatture</h1>
       </div>
 
-      <div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}>
-        <label>Mese:</label>
+      <div style={filtersWrapStyle}>
+        <label style={filterLabelStyle}>Mese</label>
         <input
           type="month"
           value={selectedMonth}
           onChange={(e) => setSelectedMonth(e.target.value)}
+          style={filterInputStyle}
         />
-        <button type="button" onClick={() => setSelectedMonth('')}>
+        <button type="button" onClick={() => setSelectedMonth('')} style={secondaryButtonStyle}>
           Tutti
         </button>
       </div>
 
       <form
         onSubmit={handleSubmit}
-        style={{ marginTop: 24, display: 'grid', gap: 12, maxWidth: 560 }}
+        style={formWrapStyle}
       >
         <select
           value={form.supplier_id}
           onChange={(e) => setForm(applySupplierMapping(e.target.value))}
+          style={fieldStyle}
         >
           <option value="">Seleziona fornitore</option>
           {suppliers.map((s) => (
@@ -263,12 +269,14 @@ export default function Fatture() {
           placeholder="Numero fattura"
           value={form.invoice_number}
           onChange={(e) => setForm({ ...form, invoice_number: e.target.value })}
+          style={fieldStyle}
         />
 
         <input
           type="date"
           value={form.invoice_date}
           onChange={(e) => setForm({ ...form, invoice_date: e.target.value })}
+          style={fieldStyle}
         />
 
         <input
@@ -277,9 +285,10 @@ export default function Fatture() {
           placeholder="Imponibile"
           value={form.amount}
           onChange={(e) => setForm({ ...form, amount: e.target.value })}
+          style={fieldStyle}
         />
 
-        <label>
+        <label style={checkboxLabelStyle}>
           <input
             type="checkbox"
             checked={form.is_general}
@@ -298,6 +307,7 @@ export default function Fatture() {
           <select
             value={form.point_of_sale_id}
             onChange={(e) => setForm({ ...form, point_of_sale_id: e.target.value })}
+            style={fieldStyle}
           >
             <option value="">Seleziona punto vendita</option>
             {pointsOfSale.map((pv) => (
@@ -311,6 +321,7 @@ export default function Fatture() {
         <select
           value={form.category_id}
           onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+          style={fieldStyle}
         >
           <option value="">Seleziona categoria</option>
           {categories.map((cat) => (
@@ -320,24 +331,26 @@ export default function Fatture() {
           ))}
         </select>
 
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button type="submit">{editingId ? 'Aggiorna' : 'Salva fattura'}</button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button type="submit" style={primaryButtonStyle}>
+            {editingId ? 'Aggiorna' : 'Salva fattura'}
+          </button>
           {editingId && (
-            <button type="button" onClick={resetForm}>
+            <button type="button" onClick={resetForm} style={secondaryButtonStyle}>
               Annulla
             </button>
           )}
         </div>
       </form>
 
-      {message && <p style={{ marginTop: 16 }}>{message}</p>}
+      {message && <p style={messageStyle}>{message}</p>}
 
-      <h2 style={{ marginTop: 32 }}>Elenco fatture</h2>
+      <h2 style={sectionTitleStyle}>Elenco fatture</h2>
 
       {rows.length === 0 ? (
         <p>Nessuna fattura presente.</p>
       ) : (
-        <table style={{ borderCollapse: 'collapse', width: '100%', marginTop: 12 }}>
+        <table style={table}>
           <thead>
             <tr>
               <th style={th}>Data</th>
@@ -362,10 +375,10 @@ export default function Fatture() {
                 <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
                 <td style={td}>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <button type="button" onClick={() => handleEdit(row)}>
+                    <button type="button" onClick={() => handleEdit(row)} style={smallButtonStyle}>
                       Modifica
                     </button>
-                    <button type="button" onClick={() => handleDelete(row.id)}>
+                    <button type="button" onClick={() => handleDelete(row.id)} style={smallDangerButtonStyle}>
                       Cancella
                     </button>
                   </div>
@@ -375,7 +388,7 @@ export default function Fatture() {
           </tbody>
         </table>
       )}
-    </div>
+    </Layout>
   )
 }
 
@@ -391,6 +404,124 @@ function getNextMonth(month) {
   }
 
   return `${nextYear}-${String(nextMonth).padStart(2, '0')}`
+}
+
+const pageHeaderStyle = {
+  display: 'flex',
+  gap: 16,
+  alignItems: 'center',
+  marginBottom: 20,
+}
+
+const pageTitleStyle = {
+  margin: 0,
+  color: '#111827',
+  fontSize: 28,
+}
+
+const filtersWrapStyle = {
+  marginTop: 20,
+  display: 'flex',
+  gap: 10,
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  marginBottom: 12,
+}
+
+const filterLabelStyle = {
+  fontSize: 14,
+  fontWeight: 600,
+  color: '#374151',
+}
+
+const filterInputStyle = {
+  padding: '10px 12px',
+  border: '1px solid #d1d5db',
+  borderRadius: 10,
+  fontSize: 14,
+  background: '#fff',
+}
+
+const formWrapStyle = {
+  marginTop: 24,
+  display: 'grid',
+  gap: 12,
+  maxWidth: 560,
+  padding: 20,
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 16,
+}
+
+const fieldStyle = {
+  width: '100%',
+  padding: '12px 14px',
+  border: '1px solid #d1d5db',
+  borderRadius: 12,
+  fontSize: 15,
+  outline: 'none',
+  boxSizing: 'border-box',
+  background: '#fff',
+}
+
+const checkboxLabelStyle = {
+  fontSize: 14,
+  color: '#111827',
+}
+
+const primaryButtonStyle = {
+  padding: '10px 14px',
+  border: 'none',
+  borderRadius: 10,
+  background: '#111827',
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
+  fontWeight: 600,
+}
+
+const secondaryButtonStyle = {
+  padding: '10px 14px',
+  border: '1px solid #d1d5db',
+  borderRadius: 10,
+  background: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
+}
+
+const smallButtonStyle = {
+  padding: '8px 10px',
+  border: '1px solid #d1d5db',
+  borderRadius: 8,
+  background: '#fff',
+  cursor: 'pointer',
+  fontSize: 13,
+}
+
+const smallDangerButtonStyle = {
+  padding: '8px 10px',
+  border: '1px solid #ef4444',
+  borderRadius: 8,
+  background: '#fff',
+  color: '#b91c1c',
+  cursor: 'pointer',
+  fontSize: 13,
+}
+
+const messageStyle = {
+  marginTop: 16,
+  color: '#111827',
+}
+
+const sectionTitleStyle = {
+  marginTop: 32,
+  color: '#111827',
+}
+
+const table = {
+  borderCollapse: 'collapse',
+  width: '100%',
+  marginTop: 12,
 }
 
 const th = {
