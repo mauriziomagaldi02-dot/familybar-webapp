@@ -268,7 +268,7 @@ export default function Analisi() {
   }
 
   return (
-    <Layout onLogout={handleLogout} compactMenu>
+    <Layout compactMenu>
       <div style={pageHeaderStyle}>
         <h1 style={pageTitleStyle}>Analisi avanzata</h1>
       </div>
