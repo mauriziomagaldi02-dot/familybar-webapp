@@ -13,6 +13,8 @@ const initialForm = {
   is_general: false,
 }
 
+const NO_PV_FILTER_VALUE = '__NO_PV__'
+
 export default function Fatture() {
   const [user, setUser] = useState(null)
   const [allRows, setAllRows] = useState([])
@@ -24,6 +26,7 @@ export default function Fatture() {
   const [message, setMessage] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [selectedMonth, setSelectedMonth] = useState('')
+  const [selectedPvFilter, setSelectedPvFilter] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [currentPage, setCurrentPage] = useState(1)
   const [loading, setLoading] = useState(true)
@@ -139,6 +142,16 @@ export default function Fatture() {
       })
     }
 
+    if (selectedPvFilter) {
+      if (selectedPvFilter === NO_PV_FILTER_VALUE) {
+        result = result.filter((row) => !row.point_of_sale_id)
+      } else {
+        result = result.filter(
+          (row) => String(row.point_of_sale_id || '') === String(selectedPvFilter)
+        )
+      }
+    }
+
     result.sort((a, b) => {
       const dateCompare = String(b.invoice_date || '').localeCompare(String(a.invoice_date || ''))
       if (dateCompare !== 0) return dateCompare
@@ -146,11 +159,11 @@ export default function Fatture() {
     })
 
     return result
-  }, [allRows, selectedMonth])
+  }, [allRows, selectedMonth, selectedPvFilter])
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [selectedMonth, pageSize, filteredRows.length])
+  }, [selectedMonth, selectedPvFilter, pageSize, filteredRows.length])
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
 
@@ -430,6 +443,21 @@ export default function Fatture() {
         <button type="button" onClick={() => setSelectedMonth('')} style={secondaryButtonStyle}>
           Tutti
         </button>
+
+        <label style={filterLabelStyle}>PV</label>
+        <select
+          value={selectedPvFilter}
+          onChange={(e) => setSelectedPvFilter(e.target.value)}
+          style={filterInputStyle}
+        >
+          <option value="">Tutti i PV</option>
+          <option value={NO_PV_FILTER_VALUE}>Senza PV</option>
+          {pointsOfSale.map((pv) => (
+            <option key={pv.id} value={pv.id}>
+              {pv.name}
+            </option>
+          ))}
+        </select>
 
         <label style={filterLabelStyle}>Mostra</label>
         <select
