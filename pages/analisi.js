@@ -21,6 +21,11 @@ export default function Analisi() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState(initialData)
 
+  const [supplierRowsPerPage, setSupplierRowsPerPage] = useState(10)
+  const [supplierPage, setSupplierPage] = useState(1)
+  const [paretoRowsPerPage, setParetoRowsPerPage] = useState(10)
+  const [paretoPage, setParetoPage] = useState(1)
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user || null))
 
@@ -36,6 +41,11 @@ export default function Analisi() {
   useEffect(() => {
     if (user) loadData()
   }, [user])
+
+  useEffect(() => {
+    setSupplierPage(1)
+    setParetoPage(1)
+  }, [selectedMonth, selectedPv])
 
   async function handleLogout() {
     await supabase.auth.signOut()
@@ -163,6 +173,7 @@ export default function Analisi() {
 
   const supplierAnalysis = useMemo(() => {
     const total = sumAmounts(filteredInvoices)
+    let cumulato = 0
 
     return data.suppliers
       .map((supplier) => {
@@ -181,22 +192,22 @@ export default function Analisi() {
       })
       .filter((row) => row.imponibile > 0)
       .sort((a, b) => b.imponibile - a.imponibile)
+      .map((row) => {
+        cumulato += row.incidenza
+
+        return {
+          ...row,
+          incidenzaCumulata: cumulato,
+        }
+      })
   }, [filteredInvoices, data.suppliers])
 
   const paretoSuppliers = useMemo(() => {
-    const total = supplierAnalysis.reduce((sum, row) => sum + row.imponibile, 0)
-    let cumulato = 0
-
-    return supplierAnalysis.map((row) => {
-      cumulato += row.imponibile
-      const cumulataPerc = total > 0 ? (cumulato / total) * 100 : 0
-
-      return {
-        ...row,
-        cumulataPerc,
-        inPareto80: cumulataPerc <= 80,
-      }
-    })
+    return supplierAnalysis.map((row) => ({
+      ...row,
+      cumulataPerc: row.incidenzaCumulata,
+      inPareto80: row.incidenzaCumulata <= 80,
+    }))
   }, [supplierAnalysis])
 
   const categoryAnalysis = useMemo(() => {
@@ -256,6 +267,20 @@ export default function Analisi() {
   const pvProductivityChart = useMemo(
     () => [...pvAnalysis].sort((a, b) => b.produttivita - a.produttivita),
     [pvAnalysis]
+  )
+
+  const supplierTotalPages = Math.max(1, Math.ceil(supplierAnalysis.length / supplierRowsPerPage))
+  const supplierStartIndex = (supplierPage - 1) * supplierRowsPerPage
+  const supplierVisibleRows = supplierAnalysis.slice(
+    supplierStartIndex,
+    supplierStartIndex + supplierRowsPerPage
+  )
+
+  const paretoTotalPages = Math.max(1, Math.ceil(paretoSuppliers.length / paretoRowsPerPage))
+  const paretoStartIndex = (paretoPage - 1) * paretoRowsPerPage
+  const paretoVisibleRows = paretoSuppliers.slice(
+    paretoStartIndex,
+    paretoStartIndex + paretoRowsPerPage
   )
 
   if (!user) {
@@ -409,6 +434,59 @@ export default function Analisi() {
           </div>
 
           <h2 style={sectionTitleStyle}>Analisi per fornitore</h2>
+
+          <div style={tableControlsWrapStyle}>
+            <div style={rowsPerPageWrapStyle}>
+              <span style={smallLabelStyle}>Mostra:</span>
+              {[10, 20, 50, 100].map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => {
+                    setSupplierRowsPerPage(size)
+                    setSupplierPage(1)
+                  }}
+                  style={{
+                    ...pageSizeButtonStyle,
+                    ...(supplierRowsPerPage === size ? activePageSizeButtonStyle : {}),
+                  }}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+
+            <div style={paginationWrapStyle}>
+              <button
+                type="button"
+                onClick={() => setSupplierPage((p) => Math.max(1, p - 1))}
+                disabled={supplierPage === 1}
+                style={{
+                  ...paginationButtonStyle,
+                  ...(supplierPage === 1 ? disabledButtonStyle : {}),
+                }}
+              >
+                ←
+              </button>
+
+              <span style={smallLabelStyle}>
+                Pagina {supplierPage} di {supplierTotalPages}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setSupplierPage((p) => Math.min(supplierTotalPages, p + 1))}
+                disabled={supplierPage === supplierTotalPages}
+                style={{
+                  ...paginationButtonStyle,
+                  ...(supplierPage === supplierTotalPages ? disabledButtonStyle : {}),
+                }}
+              >
+                →
+              </button>
+            </div>
+          </div>
+
           <div style={tableWrapStyle}>
             <table style={table}>
               <thead>
@@ -417,15 +495,17 @@ export default function Analisi() {
                   <th style={th}>Imponibile</th>
                   <th style={th}>N. fatture</th>
                   <th style={th}>Incidenza % su acquisti</th>
+                  <th style={th}>Incidenza cumulata %</th>
                 </tr>
               </thead>
               <tbody>
-                {supplierAnalysis.map((row) => (
+                {supplierVisibleRows.map((row) => (
                   <tr key={row.id}>
                     <td style={td}>{row.name}</td>
                     <td style={td}>{formatEuro(row.imponibile)}</td>
                     <td style={td}>{row.fatture}</td>
                     <td style={td}>{formatPercent(row.incidenza)}</td>
+                    <td style={td}>{formatPercent(row.incidenzaCumulata)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -433,6 +513,59 @@ export default function Analisi() {
           </div>
 
           <h2 style={sectionTitleStyle}>Pareto fornitori 80/20</h2>
+
+          <div style={tableControlsWrapStyle}>
+            <div style={rowsPerPageWrapStyle}>
+              <span style={smallLabelStyle}>Mostra:</span>
+              {[10, 20, 50, 100].map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => {
+                    setParetoRowsPerPage(size)
+                    setParetoPage(1)
+                  }}
+                  style={{
+                    ...pageSizeButtonStyle,
+                    ...(paretoRowsPerPage === size ? activePageSizeButtonStyle : {}),
+                  }}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+
+            <div style={paginationWrapStyle}>
+              <button
+                type="button"
+                onClick={() => setParetoPage((p) => Math.max(1, p - 1))}
+                disabled={paretoPage === 1}
+                style={{
+                  ...paginationButtonStyle,
+                  ...(paretoPage === 1 ? disabledButtonStyle : {}),
+                }}
+              >
+                ←
+              </button>
+
+              <span style={smallLabelStyle}>
+                Pagina {paretoPage} di {paretoTotalPages}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setParetoPage((p) => Math.min(paretoTotalPages, p + 1))}
+                disabled={paretoPage === paretoTotalPages}
+                style={{
+                  ...paginationButtonStyle,
+                  ...(paretoPage === paretoTotalPages ? disabledButtonStyle : {}),
+                }}
+              >
+                →
+              </button>
+            </div>
+          </div>
+
           <div style={tableWrapStyle}>
             <table style={table}>
               <thead>
@@ -445,7 +578,7 @@ export default function Analisi() {
                 </tr>
               </thead>
               <tbody>
-                {paretoSuppliers.map((row) => (
+                {paretoVisibleRows.map((row) => (
                   <tr key={row.id}>
                     <td style={td}>{row.name}</td>
                     <td style={td}>{formatEuro(row.imponibile)}</td>
@@ -741,4 +874,63 @@ const td = {
   padding: 10,
   fontSize: 14,
   color: '#111827',
+}
+
+const tableControlsWrapStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 12,
+  flexWrap: 'wrap',
+  marginTop: 12,
+}
+
+const rowsPerPageWrapStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  flexWrap: 'wrap',
+}
+
+const paginationWrapStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  flexWrap: 'wrap',
+}
+
+const smallLabelStyle = {
+  fontSize: 14,
+  color: '#374151',
+  fontWeight: 600,
+}
+
+const pageSizeButtonStyle = {
+  padding: '8px 10px',
+  border: '1px solid #d1d5db',
+  borderRadius: 8,
+  background: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
+}
+
+const activePageSizeButtonStyle = {
+  background: '#111827',
+  color: '#fff',
+  border: '1px solid #111827',
+}
+
+const paginationButtonStyle = {
+  padding: '8px 12px',
+  border: '1px solid #d1d5db',
+  borderRadius: 8,
+  background: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
+  minWidth: 40,
+}
+
+const disabledButtonStyle = {
+  opacity: 0.45,
+  cursor: 'not-allowed',
 }
