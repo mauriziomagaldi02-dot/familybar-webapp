@@ -22,23 +22,24 @@ export default function Layout({ children, onLogout, hideMenu = false, compactMe
         <Header onLogout={onLogout} />
 
         {!hideMenu && (
-          compactMenu ? (
-            <div style={compactMenuWrapStyle}>
-              {menuItems.map((item) => (
-                <Link key={item.href} href={item.href} style={compactMenuLinkStyle}>
-                  {item.label}
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <div style={menuSectionStyle}>
-              {menuItems.map((item) => (
-                <MenuCard key={item.href} href={item.href} label={item.label} />
-              ))}
-            </div>
-          )
-        )}
-
+  <div style={compactMenu ? compactMenuStyle : menuSectionStyle}>
+    {menuItems.map((item) => (
+      compactMenu ? (
+        <Link key={item.href} href={item.href} style={compactLinkStyle}>
+          {item.label}
+        </Link>
+      ) : (
+        <MenuLink
+          key={item.href}
+          href={item.href}
+          label={item.label}
+          icon={item.icon}
+          note={item.note}
+        />
+      )
+    ))}
+  </div>
+)}
         <div style={contentCardStyle}>{children}</div>
       </div>
     </div>
