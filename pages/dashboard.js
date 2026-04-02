@@ -2,6 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
 import Layout from '../components/Layout'
+import {
+  exportRowsToCsv,
+  exportRowsToExcel,
+  printHtmlReport,
+  buildHtmlTable,
+} from '../utils/exportUtils'
 
 export default function Dashboard() {
   const [user, setUser] = useState(null)
@@ -301,6 +307,158 @@ export default function Dashboard() {
     }))
   }, [trendRows])
 
+  const summaryExportRows = useMemo(() => {
+    return rows.map((row) => ({
+      pv: row.nome,
+      ricavi: formatEuro(row.ricavi),
+      costiFatture: formatEuro(row.costiFattureImponibile),
+      costoPersonale: formatEuro(row.costoPersonale),
+      speseDirette: formatEuro(row.speseManualiDirette),
+      quotaGenerali: formatEuro(row.quotaGenerali),
+      costiTotali: formatEuro(row.costiTotali),
+      margine: formatEuro(row.margine),
+      marginePerc: formatPercent(row.marginePerc),
+      ore: formatNumber(row.ore),
+      produttivita: formatEuro(row.produttivitaOraria),
+      costoPersonalePerc: formatPercent(row.costoPersonalePerc),
+      stato: getOverallStatusLabel(row),
+    }))
+  }, [rows])
+
+  const trendExportRows = useMemo(() => {
+    return trendRows.map((row) => ({
+      mese: formatMonthLabel(row.monthKey),
+      ricavi: formatEuro(row.ricavi),
+      costiFatture: formatEuro(row.costiFattureImponibile),
+      costoPersonale: formatEuro(row.costoPersonale),
+      speseDirette: formatEuro(row.speseManualiDirette),
+      quotaGenerali: formatEuro(row.quotaGenerali),
+      costiTotali: formatEuro(row.costiTotali),
+      margine: formatEuro(row.margine),
+      marginePerc: formatPercent(row.marginePerc),
+      ore: formatNumber(row.ore),
+      produttivita: formatEuro(row.produttivitaOraria),
+      trendRicavi: formatTrend(row.trendRicaviPerc),
+      trendMargine: formatTrend(row.trendMarginePerc),
+    }))
+  }, [trendRows])
+
+  function handleExportCsv() {
+    exportRowsToCsv({
+      filename: `dashboard_${selectedMonth || 'tutti'}${selectedPv ? `_pv_${selectedPv}` : ''}.csv`,
+      columns: [
+        { label: 'PV', value: (r) => r.pv },
+        { label: 'Ricavi', value: (r) => r.ricavi },
+        { label: 'Costi fatture', value: (r) => r.costiFatture },
+        { label: 'Costo personale', value: (r) => r.costoPersonale },
+        { label: 'Spese dirette', value: (r) => r.speseDirette },
+        { label: 'Quota generali', value: (r) => r.quotaGenerali },
+        { label: 'Costi totali', value: (r) => r.costiTotali },
+        { label: 'Margine', value: (r) => r.margine },
+        { label: 'Margine %', value: (r) => r.marginePerc },
+        { label: 'Ore', value: (r) => r.ore },
+        { label: 'Produttività €/h', value: (r) => r.produttivita },
+        { label: 'Costo personale %', value: (r) => r.costoPersonalePerc },
+        { label: 'Stato', value: (r) => r.stato },
+      ],
+      rows: summaryExportRows,
+    })
+  }
+
+  function handleExportExcel() {
+    exportRowsToExcel({
+      filename: `dashboard_${selectedMonth || 'tutti'}${selectedPv ? `_pv_${selectedPv}` : ''}.xls`,
+      title: `Dashboard ${selectedMonth}${selectedPv ? ` - PV ${selectedPv}` : ''}`,
+      columns: [
+        { label: 'PV', value: (r) => r.pv },
+        { label: 'Ricavi', value: (r) => r.ricavi },
+        { label: 'Costi fatture', value: (r) => r.costiFatture },
+        { label: 'Costo personale', value: (r) => r.costoPersonale },
+        { label: 'Spese dirette', value: (r) => r.speseDirette },
+        { label: 'Quota generali', value: (r) => r.quotaGenerali },
+        { label: 'Costi totali', value: (r) => r.costiTotali },
+        { label: 'Margine', value: (r) => r.margine },
+        { label: 'Margine %', value: (r) => r.marginePerc },
+        { label: 'Ore', value: (r) => r.ore },
+        { label: 'Produttività €/h', value: (r) => r.produttivita },
+        { label: 'Costo personale %', value: (r) => r.costoPersonalePerc },
+        { label: 'Stato', value: (r) => r.stato },
+      ],
+      rows: summaryExportRows,
+    })
+  }
+
+  function handlePrintPdf() {
+    const kpiHtml = `
+      <div class="kpi-grid">
+        <div class="kpi-card"><div class="kpi-title">Ricavi</div><div class="kpi-value">${formatEuro(totals.ricavi)}</div></div>
+        <div class="kpi-card"><div class="kpi-title">Costi totali</div><div class="kpi-value">${formatEuro(overallMetrics.costiTotali)}</div></div>
+        <div class="kpi-card"><div class="kpi-title">Margine €</div><div class="kpi-value">${formatEuro(totals.margine)}</div></div>
+        <div class="kpi-card"><div class="kpi-title">Margine %</div><div class="kpi-value">${formatPercent(overallMetrics.marginePerc)}</div></div>
+      </div>
+    `
+
+    const alertsHtml =
+      alerts.length > 0
+        ? `
+          <h2>Alert</h2>
+          <ul>
+            ${alerts
+              .map(
+                (a) =>
+                  `<li><strong>${a.nome}</strong> - margine ${formatEuro(a.margine)} / prod. ${formatEuro(a.produttivitaOraria)} / costo pers. ${formatPercent(a.costoPersonalePerc)}</li>`
+              )
+              .join('')}
+          </ul>
+        `
+        : ''
+
+    const summaryTable = buildHtmlTable({
+      columns: [
+        { label: 'PV', value: (r) => r.pv },
+        { label: 'Ricavi', value: (r) => r.ricavi },
+        { label: 'Costi fatture', value: (r) => r.costiFatture },
+        { label: 'Costo personale', value: (r) => r.costoPersonale },
+        { label: 'Spese dirette', value: (r) => r.speseDirette },
+        { label: 'Quota generali', value: (r) => r.quotaGenerali },
+        { label: 'Costi totali', value: (r) => r.costiTotali },
+        { label: 'Margine', value: (r) => r.margine },
+        { label: 'Margine %', value: (r) => r.marginePerc },
+        { label: 'Ore', value: (r) => r.ore },
+        { label: 'Produttività €/h', value: (r) => r.produttivita },
+        { label: 'Costo personale %', value: (r) => r.costoPersonalePerc },
+        { label: 'Stato', value: (r) => r.stato },
+      ],
+      rows: summaryExportRows,
+    })
+
+    const trendTable = buildHtmlTable({
+      columns: [
+        { label: 'Mese', value: (r) => r.mese },
+        { label: 'Ricavi', value: (r) => r.ricavi },
+        { label: 'Costi totali', value: (r) => r.costiTotali },
+        { label: 'Margine', value: (r) => r.margine },
+        { label: 'Margine %', value: (r) => r.marginePerc },
+        { label: 'Ore', value: (r) => r.ore },
+        { label: 'Produttività €/h', value: (r) => r.produttivita },
+        { label: 'Trend ricavi', value: (r) => r.trendRicavi },
+        { label: 'Trend margine', value: (r) => r.trendMargine },
+      ],
+      rows: trendExportRows,
+    })
+
+    printHtmlReport({
+      title: 'Dashboard Business Analytics',
+      subtitle: `Mese: ${selectedMonth}${selectedPv ? ` | PV: ${pointsOfSale.find((p) => String(p.id) === String(selectedPv))?.name || selectedPv}` : ' | Tutti i PV'}`,
+      sections: [
+        kpiHtml,
+        alertsHtml,
+        `<h2>Sintesi per punto vendita</h2>${summaryTable}`,
+        `<h2>Trend mensile</h2>${trendTable}`,
+      ],
+    })
+  }
+
   if (!user) {
     return (
       <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
@@ -348,6 +506,18 @@ export default function Dashboard() {
           <option value={6}>Ultimi 6 mesi</option>
           <option value={12}>Ultimi 12 mesi</option>
         </select>
+      </div>
+
+      <div style={exportWrapStyle}>
+        <button type="button" onClick={handleExportCsv} style={secondaryButtonStyle}>
+          Esporta CSV
+        </button>
+        <button type="button" onClick={handleExportExcel} style={secondaryButtonStyle}>
+          Esporta Excel
+        </button>
+        <button type="button" onClick={handlePrintPdf} style={primaryButtonStyle}>
+          Stampa / PDF
+        </button>
       </div>
 
       {message && <p style={errorTextStyle}>{message}</p>}
@@ -569,11 +739,7 @@ function KpiCard({ title, value, color = '#111827' }) {
 
 function TrendLineChart({ data, width = 1000, height = 320 }) {
   if (!data || data.length === 0) {
-    return (
-      <div style={emptyChartStyle}>
-        Nessun dato disponibile
-      </div>
-    )
+    return <div style={emptyChartStyle}>Nessun dato disponibile</div>
   }
 
   const padding = { top: 20, right: 20, bottom: 50, left: 90 }
@@ -599,15 +765,14 @@ function TrendLineChart({ data, width = 1000, height = 320 }) {
     return padding.top + ((maxValue - value) / range) * innerHeight
   }
 
-  const buildPath = (key) => {
-    return data
+  const buildPath = (key) =>
+    data
       .map((d, i) => {
         const x = getX(i)
         const y = getY(Number(d[key] || 0))
         return `${i === 0 ? 'M' : 'L'} ${x} ${y}`
       })
       .join(' ')
-  }
 
   const ricaviPath = buildPath('ricavi')
   const costiPath = buildPath('costi')
@@ -620,67 +785,28 @@ function TrendLineChart({ data, width = 1000, height = 320 }) {
 
   return (
     <div style={{ marginBottom: 24 }}>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        style={chartSvgStyle}
-      >
+      <svg viewBox={`0 0 ${width} ${height}`} style={chartSvgStyle}>
         {tickValues.map((tick, i) => {
           const y = getY(tick)
           return (
             <g key={i}>
-              <line
-                x1={padding.left}
-                y1={y}
-                x2={width - padding.right}
-                y2={y}
-                stroke="#e5e5e5"
-              />
-              <text
-                x={padding.left - 10}
-                y={y + 4}
-                fontSize="11"
-                textAnchor="end"
-                fill="#555"
-              >
+              <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke="#e5e5e5" />
+              <text x={padding.left - 10} y={y + 4} fontSize="11" textAnchor="end" fill="#555">
                 {formatEuro(tick)}
               </text>
             </g>
           )
         })}
 
-        <line
-          x1={padding.left}
-          y1={padding.top}
-          x2={padding.left}
-          y2={height - padding.bottom}
-          stroke="#999"
-        />
-        <line
-          x1={padding.left}
-          y1={height - padding.bottom}
-          x2={width - padding.right}
-          y2={height - padding.bottom}
-          stroke="#999"
-        />
+        <line x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} stroke="#999" />
+        <line x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} stroke="#999" />
 
         {data.map((d, i) => {
           const x = getX(i)
           return (
             <g key={d.mese}>
-              <line
-                x1={x}
-                y1={height - padding.bottom}
-                x2={x}
-                y2={height - padding.bottom + 6}
-                stroke="#999"
-              />
-              <text
-                x={x}
-                y={height - padding.bottom + 20}
-                fontSize="11"
-                textAnchor="middle"
-                fill="#555"
-              >
+              <line x1={x} y1={height - padding.bottom} x2={x} y2={height - padding.bottom + 6} stroke="#999" />
+              <text x={x} y={height - padding.bottom + 20} fontSize="11" textAnchor="middle" fill="#555">
                 {d.mese}
               </text>
             </g>
@@ -752,21 +878,9 @@ function calculateMonthSnapshot({
     .reduce((sum, r) => sum + Number(r.amount || 0), 0)
 
   const ricavi = revenuesInMonth.reduce((sum, r) => sum + Number(r.amount || 0), 0)
-
-  const costiFattureImponibile = invoicesInMonth.reduce(
-    (sum, i) => sum + Number(i.amount || 0),
-    0
-  )
-
-  const costoPersonale = staffInMonth.reduce(
-    (sum, s) => sum + Number(s.amount || 0),
-    0
-  )
-
-  const ore = staffInMonth.reduce(
-    (sum, s) => sum + Number(s.worked_hours || 0),
-    0
-  )
+  const costiFattureImponibile = invoicesInMonth.reduce((sum, i) => sum + Number(i.amount || 0), 0)
+  const costoPersonale = staffInMonth.reduce((sum, s) => sum + Number(s.amount || 0), 0)
+  const ore = staffInMonth.reduce((sum, s) => sum + Number(s.worked_hours || 0), 0)
 
   const speseManualiDirette = manualCostsInMonth
     .filter((c) => !c.is_general && (selectedPv ? String(c.point_of_sale_id) === String(selectedPv) : true))
@@ -964,6 +1078,14 @@ const filtersWrapStyle = {
   flexWrap: 'wrap',
 }
 
+const exportWrapStyle = {
+  marginBottom: 20,
+  display: 'flex',
+  gap: 10,
+  alignItems: 'center',
+  flexWrap: 'wrap',
+}
+
 const filterLabelStyle = {
   fontSize: 14,
   fontWeight: 600,
@@ -976,6 +1098,26 @@ const filterInputStyle = {
   borderRadius: 10,
   fontSize: 14,
   background: '#fff',
+}
+
+const primaryButtonStyle = {
+  padding: '10px 14px',
+  border: 'none',
+  borderRadius: 10,
+  background: '#111827',
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
+  fontWeight: 600,
+}
+
+const secondaryButtonStyle = {
+  padding: '10px 14px',
+  border: '1px solid #d1d5db',
+  borderRadius: 10,
+  background: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
 }
 
 const errorTextStyle = {
