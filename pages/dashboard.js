@@ -230,15 +230,6 @@ export default function Dashboard() {
     }
   }, [rows])
 
-  const alerts = useMemo(() => {
-    return rows.filter(
-      (r) =>
-        r.margine < 0 ||
-        r.produttivitaOraria < 35 ||
-        r.costoPersonalePerc > 35
-    )
-  }, [rows])
-
   const trendRows = useMemo(() => {
     const monthKeys = getLastMonths(selectedMonth, trendMonths)
 
@@ -398,21 +389,6 @@ export default function Dashboard() {
       </div>
     `
 
-    const alertsHtml =
-      alerts.length > 0
-        ? `
-          <h2>Alert</h2>
-          <ul>
-            ${alerts
-              .map(
-                (a) =>
-                  `<li><strong>${a.nome}</strong> - margine ${formatEuro(a.margine)} / prod. ${formatEuro(a.produttivitaOraria)} / costo pers. ${formatPercent(a.costoPersonalePerc)}</li>`
-              )
-              .join('')}
-          </ul>
-        `
-        : ''
-
     const summaryTable = buildHtmlTable({
       columns: [
         { label: 'PV', value: (r) => r.pv },
@@ -452,7 +428,6 @@ export default function Dashboard() {
       subtitle: `Mese: ${selectedMonth}${selectedPv ? ` | PV: ${pointsOfSale.find((p) => String(p.id) === String(selectedPv))?.name || selectedPv}` : ' | Tutti i PV'}`,
       sections: [
         kpiHtml,
-        alertsHtml,
         `<h2>Sintesi per punto vendita</h2>${summaryTable}`,
         `<h2>Trend mensile</h2>${trendTable}`,
       ],
@@ -508,18 +483,6 @@ export default function Dashboard() {
         </select>
       </div>
 
-      <div style={exportWrapStyle}>
-        <button type="button" onClick={handleExportCsv} style={secondaryButtonStyle}>
-          Esporta CSV
-        </button>
-        <button type="button" onClick={handleExportExcel} style={secondaryButtonStyle}>
-          Esporta Excel
-        </button>
-        <button type="button" onClick={handlePrintPdf} style={primaryButtonStyle}>
-          Stampa / PDF
-        </button>
-      </div>
-
       {message && <p style={errorTextStyle}>{message}</p>}
 
       {loading ? (
@@ -547,19 +510,6 @@ export default function Dashboard() {
               <KpiCard title="Costo personale %" value={formatPercent(overallMetrics.costoPersonalePerc)} />
               <KpiCard title="Miglior PV" value={extraKpi.bestPv?.nome || '-'} />
               <KpiCard title="Peggior PV" value={extraKpi.worstPv?.nome || '-'} />
-            </div>
-          )}
-
-          {alerts.length > 0 && (
-            <div style={alertBoxStyle}>
-              <div style={alertTitleStyle}>⚠️ Attenzione</div>
-              <ul style={alertListStyle}>
-                {alerts.map((a) => (
-                  <li key={a.id}>
-                    <strong>{a.nome}</strong> – margine {formatEuro(a.margine)} / prod. {formatEuro(a.produttivitaOraria)} / costo pers. {formatPercent(a.costoPersonalePerc)}
-                  </li>
-                ))}
-              </ul>
             </div>
           )}
 
@@ -721,6 +671,18 @@ export default function Dashboard() {
                 </tbody>
               </table>
             </div>
+          </div>
+
+          <div style={exportWrapStyle}>
+            <button type="button" onClick={handleExportCsv} style={secondaryButtonStyle}>
+              Esporta CSV
+            </button>
+            <button type="button" onClick={handleExportExcel} style={secondaryButtonStyle}>
+              Esporta Excel
+            </button>
+            <button type="button" onClick={handlePrintPdf} style={primaryButtonStyle}>
+              Stampa / PDF
+            </button>
           </div>
         </>
       )}
@@ -1079,7 +1041,7 @@ const filtersWrapStyle = {
 }
 
 const exportWrapStyle = {
-  marginBottom: 20,
+  marginTop: 28,
   display: 'flex',
   gap: 10,
   alignItems: 'center',
@@ -1154,26 +1116,6 @@ const kpiTitleStyle = {
 const kpiValueStyle = {
   fontSize: 20,
   fontWeight: 700,
-}
-
-const alertBoxStyle = {
-  marginBottom: 20,
-  padding: 16,
-  borderRadius: 12,
-  background: '#fef2f2',
-  border: '1px solid #fecaca',
-}
-
-const alertTitleStyle = {
-  fontWeight: 700,
-  marginBottom: 8,
-  color: '#991b1b',
-}
-
-const alertListStyle = {
-  margin: 0,
-  paddingLeft: 20,
-  color: '#7f1d1d',
 }
 
 const sectionTitleStyle = {
