@@ -91,92 +91,148 @@ export default function Dashboard() {
   }
 
   function buildDashboardRows() {
-    const filteredRevenues = (revenues || []).filter((r) =>
-      isInSelectedMonth(r.date, selectedMonth)
-    )
+  const filteredRevenues = (revenues || []).filter((r) =>
+    isInSelectedMonth(r.date, selectedMonth)
+  )
 
-    const filteredInvoices = (invoices || []).filter((i) =>
-      isInSelectedMonth(i.invoice_date, selectedMonth)
-    )
+  const filteredInvoices = (invoices || []).filter((i) =>
+    isInSelectedMonth(i.invoice_date, selectedMonth)
+  )
 
-    const filteredStaff = (staffCosts || []).filter((s) =>
-      isInSelectedMonth(s.period_month, selectedMonth)
-    )
+  const filteredStaff = (staffCosts || []).filter((s) =>
+    isInSelectedMonth(s.period_month, selectedMonth)
+  )
 
-    const filteredManualCosts = (manualCosts || []).filter((c) =>
-      isInSelectedMonth(c.cost_date, selectedMonth)
-    )
+  const filteredManualCosts = (manualCosts || []).filter((c) =>
+    isInSelectedMonth(c.cost_date, selectedMonth)
+  )
 
-    const filteredPvData = (pointsOfSale || []).filter((pv) =>
-      selectedPv ? String(pv.id) === String(selectedPv) : true
-    )
+  const filteredPvData = (pointsOfSale || []).filter((pv) =>
+    selectedPv ? String(pv.id) === String(selectedPv) : true
+  )
 
-    const totalRicavi = filteredRevenues.reduce(
-      (sum, r) => sum + Number(r.amount || 0),
-      0
-    )
+  const totalRicavi = filteredRevenues.reduce(
+    (sum, r) => sum + Number(r.amount || 0),
+    0
+  )
 
-    const generalManualCosts = filteredManualCosts.filter((c) => c.is_general === true)
+  const generalManualCosts = filteredManualCosts.filter((c) => c.is_general === true)
 
-    const result = filteredPvData.map((pv) => {
-      const ricavi = filteredRevenues
-        .filter((r) => String(r.point_of_sale_id) === String(pv.id))
-        .reduce((sum, r) => sum + Number(r.amount || 0), 0)
+  const result = filteredPvData.map((pv) => {
+    const ricavi = filteredRevenues
+      .filter((r) => String(r.point_of_sale_id) === String(pv.id))
+      .reduce((sum, r) => sum + Number(r.amount || 0), 0)
 
-      const costiFattureImponibile = filteredInvoices
-        .filter((i) => String(i.point_of_sale_id) === String(pv.id))
-        .reduce((sum, i) => sum + Number(i.amount || 0), 0)
+    const costiFattureImponibile = filteredInvoices
+      .filter((i) => String(i.point_of_sale_id) === String(pv.id))
+      .reduce((sum, i) => sum + Number(i.amount || 0), 0)
 
-      const costoPersonale = filteredStaff
-        .filter((s) => String(s.point_of_sale_id) === String(pv.id))
-        .reduce((sum, s) => sum + Number(s.amount || 0), 0)
+    const costoPersonale = filteredStaff
+      .filter((s) => String(s.point_of_sale_id) === String(pv.id))
+      .reduce((sum, s) => sum + Number(s.amount || 0), 0)
 
-      const ore = filteredStaff
-        .filter((s) => String(s.point_of_sale_id) === String(pv.id))
-        .reduce((sum, s) => sum + Number(s.worked_hours || 0), 0)
+    const ore = filteredStaff
+      .filter((s) => String(s.point_of_sale_id) === String(pv.id))
+      .reduce((sum, s) => sum + Number(s.worked_hours || 0), 0)
 
-      const speseManualiDirette = filteredManualCosts
-        .filter((c) => !c.is_general && String(c.point_of_sale_id) === String(pv.id))
-        .reduce((sum, c) => sum + Number(c.amount || 0), 0)
+    const speseManualiDirette = filteredManualCosts
+      .filter((c) => !c.is_general && String(c.point_of_sale_id) === String(pv.id))
+      .reduce((sum, c) => sum + Number(c.amount || 0), 0)
 
-      const quotaGenerali = generalManualCosts.reduce((sum, c) => {
-        const amount = Number(c.amount || 0)
+    const quotaGenerali = generalManualCosts.reduce((sum, c) => {
+      const amount = Number(c.amount || 0)
 
-        if (totalRicavi > 0) {
-          return sum + amount * (ricavi / totalRicavi)
-        }
-
-        const numeroPv = filteredPvData.length || 1
-        return sum + amount / numeroPv
-      }, 0)
-
-      const costiTotali =
-        costiFattureImponibile + costoPersonale + speseManualiDirette + quotaGenerali
-
-      const margine = ricavi - costiTotali
-      const marginePerc = ricavi > 0 ? (margine / ricavi) * 100 : 0
-      const produttivitaOraria = ore > 0 ? ricavi / ore : 0
-      const costoPersonalePerc = ricavi > 0 ? (costoPersonale / ricavi) * 100 : 0
-
-      return {
-        id: pv.id,
-        nome: pv.name,
-        ricavi,
-        costiFattureImponibile,
-        costoPersonale,
-        speseManualiDirette,
-        quotaGenerali,
-        costiTotali,
-        margine,
-        marginePerc,
-        ore,
-        produttivitaOraria,
-        costoPersonalePerc,
+      if (totalRicavi > 0) {
+        return sum + amount * (ricavi / totalRicavi)
       }
-    })
 
-    setRows(result)
+      const numeroPv = filteredPvData.length || 1
+      return sum + amount / numeroPv
+    }, 0)
+
+    const costiTotali =
+      costiFattureImponibile + costoPersonale + speseManualiDirette + quotaGenerali
+
+    const margine = ricavi - costiTotali
+    const marginePerc = ricavi > 0 ? (margine / ricavi) * 100 : 0
+    const produttivitaOraria = ore > 0 ? ricavi / ore : 0
+    const costoPersonalePerc = ricavi > 0 ? (costoPersonale / ricavi) * 100 : 0
+
+    return {
+      id: pv.id,
+      nome: pv.name,
+      ricavi,
+      costiFattureImponibile,
+      costoPersonale,
+      speseManualiDirette,
+      quotaGenerali,
+      costiTotali,
+      margine,
+      marginePerc,
+      ore,
+      produttivitaOraria,
+      costoPersonalePerc,
+    }
+  })
+
+  if (!selectedPv) {
+    const ricaviNonAssegnati = filteredRevenues
+      .filter((r) => !r.point_of_sale_id)
+      .reduce((sum, r) => sum + Number(r.amount || 0), 0)
+
+    const fattureNonAssegnate = filteredInvoices
+      .filter((i) => !i.point_of_sale_id)
+      .reduce((sum, i) => sum + Number(i.amount || 0), 0)
+
+    const personaleNonAssegnato = filteredStaff
+      .filter((s) => !s.point_of_sale_id)
+      .reduce((sum, s) => sum + Number(s.amount || 0), 0)
+
+    const oreNonAssegnate = filteredStaff
+      .filter((s) => !s.point_of_sale_id)
+      .reduce((sum, s) => sum + Number(s.worked_hours || 0), 0)
+
+    const speseDiretteNonAssegnate = filteredManualCosts
+      .filter((c) => !c.is_general && !c.point_of_sale_id)
+      .reduce((sum, c) => sum + Number(c.amount || 0), 0)
+
+    const costiTotaliNonAssegnati =
+      fattureNonAssegnate + personaleNonAssegnato + speseDiretteNonAssegnate
+
+    const margineNonAssegnato = ricaviNonAssegnati - costiTotaliNonAssegnati
+    const marginePercNonAssegnato =
+      ricaviNonAssegnati > 0 ? (margineNonAssegnato / ricaviNonAssegnati) * 100 : 0
+    const produttivitaNonAssegnata =
+      oreNonAssegnate > 0 ? ricaviNonAssegnati / oreNonAssegnate : 0
+    const costoPersonalePercNonAssegnato =
+      ricaviNonAssegnati > 0 ? (personaleNonAssegnato / ricaviNonAssegnati) * 100 : 0
+
+    if (
+      ricaviNonAssegnati > 0 ||
+      fattureNonAssegnate > 0 ||
+      personaleNonAssegnato > 0 ||
+      speseDiretteNonAssegnate > 0
+    ) {
+      result.push({
+        id: 'unassigned',
+        nome: 'NON ASSEGNATI',
+        ricavi: ricaviNonAssegnati,
+        costiFattureImponibile: fattureNonAssegnate,
+        costoPersonale: personaleNonAssegnato,
+        speseManualiDirette: speseDiretteNonAssegnate,
+        quotaGenerali: 0,
+        costiTotali: costiTotaliNonAssegnati,
+        margine: margineNonAssegnato,
+        marginePerc: marginePercNonAssegnato,
+        ore: oreNonAssegnate,
+        produttivitaOraria: produttivitaNonAssegnata,
+        costoPersonalePerc: costoPersonalePercNonAssegnato,
+      })
+    }
   }
+
+  setRows(result)
+}
 
   const totals = useMemo(() => {
     return rows.reduce(
