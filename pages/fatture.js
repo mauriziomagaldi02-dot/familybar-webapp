@@ -36,6 +36,9 @@ export default function Fatture() {
   const [deletingId, setDeletingId] = useState(null)
   const [updatingCellId, setUpdatingCellId] = useState(null)
 
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [creatingCategory, setCreatingCategory] = useState(false)
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setUser(data.user || null)
@@ -201,6 +204,49 @@ export default function Fatture() {
       category_id: mapping.category_id || '',
       is_general: !!mapping.is_general,
     }
+  }
+
+  async function handleCreateCategory() {
+    const cleanedName = newCategoryName.trim()
+
+    if (!cleanedName) {
+      setMessage('Inserisci il nome della nuova categoria')
+      return
+    }
+
+    const alreadyExists = categories.find(
+      (cat) => String(cat.name || '').trim().toLowerCase() === cleanedName.toLowerCase()
+    )
+
+    if (alreadyExists) {
+      setForm((prev) => ({ ...prev, category_id: alreadyExists.id }))
+      setNewCategoryName('')
+      setMessage('Categoria già esistente. Selezionata automaticamente.')
+      return
+    }
+
+    setCreatingCategory(true)
+    setMessage('')
+
+    const { data, error } = await supabase
+      .from('categories')
+      .insert({ name: cleanedName })
+      .select()
+      .single()
+
+    if (error) {
+      setMessage(`Errore creazione categoria: ${error.message}`)
+      setCreatingCategory(false)
+      return
+    }
+
+    setCategories((prev) =>
+      [...prev, data].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+    )
+    setForm((prev) => ({ ...prev, category_id: data.id }))
+    setNewCategoryName('')
+    setMessage('Categoria creata.')
+    setCreatingCategory(false)
   }
 
   async function handleSubmit(e) {
@@ -406,6 +452,7 @@ export default function Fatture() {
   function resetForm() {
     setForm(initialForm)
     setEditingId(null)
+    setNewCategoryName('')
   }
 
   function getSupplierName(id) {
@@ -579,6 +626,24 @@ export default function Fatture() {
             </option>
           ))}
         </select>
+
+        <div style={newCategoryWrapStyle}>
+          <input
+            type="text"
+            placeholder="Nuova categoria"
+            value={newCategoryName}
+            onChange={(e) => setNewCategoryName(e.target.value)}
+            style={fieldStyle}
+          />
+          <button
+            type="button"
+            onClick={handleCreateCategory}
+            style={creatingCategory ? disabledPrimaryButtonStyle : primaryButtonStyle}
+            disabled={creatingCategory}
+          >
+            {creatingCategory ? 'Creazione...' : 'Crea categoria'}
+          </button>
+        </div>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button
@@ -971,4 +1036,11 @@ const inlineCheckboxLabelStyle = {
 const inlineMutedTextStyle = {
   fontSize: 13,
   color: '#6b7280',
+}
+
+const newCategoryWrapStyle = {
+  display: 'grid',
+  gridTemplateColumns: '1fr auto',
+  gap: 10,
+  alignItems: 'center',
 }
