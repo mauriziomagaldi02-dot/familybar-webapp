@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
+import Layout from '../components/Layout'
 
 const initialForm = {
   date: '',
@@ -16,6 +17,8 @@ export default function Ricavi() {
   const [message, setMessage] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [selectedMonth, setSelectedMonth] = useState('')
+  const [pageSize, setPageSize] = useState(10)
+  const [currentPage, setCurrentPage] = useState(1)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user || null))
@@ -32,6 +35,21 @@ export default function Ricavi() {
   useEffect(() => {
     if (user) loadData()
   }, [user, selectedMonth])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [selectedMonth, pageSize])
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+
+  const paginatedRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize
+    return rows.slice(startIndex, startIndex + pageSize)
+  }, [rows, currentPage, pageSize])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+  }
 
   async function loadData() {
     setMessage('')
@@ -134,6 +152,18 @@ export default function Ricavi() {
     setEditingId(null)
   }
 
+  function getPvName(id) {
+    return pointsOfSale.find((p) => String(p.id) === String(id))?.name || ''
+  }
+
+  function goToPrevPage() {
+    setCurrentPage((prev) => Math.max(1, prev - 1))
+  }
+
+  function goToNextPage() {
+    setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+  }
+
   if (!user) {
     return (
       <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
@@ -144,32 +174,45 @@ export default function Ricavi() {
   }
 
   return (
-    <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-        <h1 style={{ margin: 0 }}>Ricavi</h1>
-        <Link href="/">Home</Link>
+    <Layout onLogout={handleLogout} compactMenu>
+      <div style={pageHeaderStyle}>
+        <h1 style={pageTitleStyle}>Ricavi</h1>
       </div>
 
-      <div style={{ marginTop: 20, display: 'flex', gap: 10, alignItems: 'center' }}>
-        <label>Mese:</label>
+      <div style={filtersWrapStyle}>
+        <label style={filterLabelStyle}>Mese</label>
         <input
           type="month"
           value={selectedMonth}
           onChange={(e) => setSelectedMonth(e.target.value)}
+          style={filterInputStyle}
         />
-        <button type="button" onClick={() => setSelectedMonth('')}>
+        <button type="button" onClick={() => setSelectedMonth('')} style={secondaryButtonStyle}>
           Tutti
         </button>
+
+        <label style={filterLabelStyle}>Mostra</label>
+        <select
+          value={pageSize}
+          onChange={(e) => setPageSize(Number(e.target.value))}
+          style={filterInputStyle}
+        >
+          <option value={10}>10</option>
+          <option value={20}>20</option>
+          <option value={50}>50</option>
+          <option value={100}>100</option>
+        </select>
       </div>
 
       <form
         onSubmit={handleSubmit}
-        style={{ marginTop: 20, display: 'grid', gap: 10, maxWidth: 400 }}
+        style={formWrapStyle}
       >
         <input
           type="date"
           value={form.date}
           onChange={(e) => setForm({ ...form, date: e.target.value })}
+          style={fieldStyle}
         />
 
         <input
@@ -178,11 +221,13 @@ export default function Ricavi() {
           placeholder="Importo"
           value={form.amount}
           onChange={(e) => setForm({ ...form, amount: e.target.value })}
+          style={fieldStyle}
         />
 
         <select
           value={form.point_of_sale_id}
           onChange={(e) => setForm({ ...form, point_of_sale_id: e.target.value })}
+          style={fieldStyle}
         >
           <option value="">Seleziona PV</option>
           {pointsOfSale.map((pv) => (
@@ -192,58 +237,87 @@ export default function Ricavi() {
           ))}
         </select>
 
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button type="submit">{editingId ? 'Aggiorna' : 'Salva'}</button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button type="submit" style={primaryButtonStyle}>
+            {editingId ? 'Aggiorna' : 'Salva'}
+          </button>
           {editingId && (
-            <button type="button" onClick={resetForm}>
+            <button type="button" onClick={resetForm} style={secondaryButtonStyle}>
               Annulla
             </button>
           )}
         </div>
       </form>
 
-      {message && <p style={{ marginTop: 12 }}>{message}</p>}
+      {message && <p style={messageStyle}>{message}</p>}
 
-      <h2 style={{ marginTop: 30 }}>Elenco ricavi</h2>
+      <h2 style={sectionTitleStyle}>Elenco ricavi</h2>
 
       {rows.length === 0 ? (
         <p>Nessun ricavo presente.</p>
       ) : (
-        <table style={{ marginTop: 10, borderCollapse: 'collapse', width: '100%' }}>
-          <thead>
-            <tr>
-              <th style={th}>Data</th>
-              <th style={th}>Importo</th>
-              <th style={th}>PV</th>
-              <th style={th}>Azioni</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => {
-              const pv = pointsOfSale.find((p) => p.id === row.point_of_sale_id)
+        <>
+          <div style={paginationInfoStyle}>
+            <span>
+              Totale ricavi: <strong>{rows.length}</strong>
+            </span>
+            <span>
+              Pagina <strong>{currentPage}</strong> di <strong>{totalPages}</strong>
+            </span>
+          </div>
 
-              return (
+          <table style={table}>
+            <thead>
+              <tr>
+                <th style={th}>Data</th>
+                <th style={th}>Importo</th>
+                <th style={th}>PV</th>
+                <th style={th}>Azioni</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedRows.map((row) => (
                 <tr key={row.id}>
                   <td style={td}>{row.date || ''}</td>
                   <td style={td}>{row.amount || ''}</td>
-                  <td style={td}>{pv?.name || ''}</td>
+                  <td style={td}>{getPvName(row.point_of_sale_id)}</td>
                   <td style={td}>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="button" onClick={() => handleEdit(row)}>
+                      <button type="button" onClick={() => handleEdit(row)} style={smallButtonStyle}>
                         Modifica
                       </button>
-                      <button type="button" onClick={() => handleDelete(row.id)}>
+                      <button type="button" onClick={() => handleDelete(row.id)} style={smallDangerButtonStyle}>
                         Cancella
                       </button>
                     </div>
                   </td>
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+
+          <div style={paginationWrapStyle}>
+            <button
+              type="button"
+              onClick={goToPrevPage}
+              disabled={currentPage === 1}
+              style={currentPage === 1 ? disabledButtonStyle : secondaryButtonStyle}
+            >
+              ← Precedente
+            </button>
+
+            <button
+              type="button"
+              onClick={goToNextPage}
+              disabled={currentPage === totalPages}
+              style={currentPage === totalPages ? disabledButtonStyle : secondaryButtonStyle}
+            >
+              Successiva →
+            </button>
+          </div>
+        </>
       )}
-    </div>
+    </Layout>
   )
 }
 
@@ -258,6 +332,148 @@ function getNextMonth(month) {
   }
 
   return `${nextYear}-${String(nextMonth).padStart(2, '0')}`
+}
+
+const pageHeaderStyle = {
+  display: 'flex',
+  gap: 16,
+  alignItems: 'center',
+  marginBottom: 20,
+}
+
+const pageTitleStyle = {
+  margin: 0,
+  color: '#111827',
+  fontSize: 28,
+}
+
+const filtersWrapStyle = {
+  marginTop: 20,
+  display: 'flex',
+  gap: 10,
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  marginBottom: 12,
+}
+
+const filterLabelStyle = {
+  fontSize: 14,
+  fontWeight: 600,
+  color: '#374151',
+}
+
+const filterInputStyle = {
+  padding: '10px 12px',
+  border: '1px solid #d1d5db',
+  borderRadius: 10,
+  fontSize: 14,
+  background: '#fff',
+}
+
+const formWrapStyle = {
+  marginTop: 20,
+  display: 'grid',
+  gap: 10,
+  maxWidth: 400,
+  padding: 20,
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 16,
+}
+
+const fieldStyle = {
+  width: '100%',
+  padding: '12px 14px',
+  border: '1px solid #d1d5db',
+  borderRadius: 12,
+  fontSize: 15,
+  outline: 'none',
+  boxSizing: 'border-box',
+  background: '#fff',
+}
+
+const primaryButtonStyle = {
+  padding: '10px 14px',
+  border: 'none',
+  borderRadius: 10,
+  background: '#111827',
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
+  fontWeight: 600,
+}
+
+const secondaryButtonStyle = {
+  padding: '10px 14px',
+  border: '1px solid #d1d5db',
+  borderRadius: 10,
+  background: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
+}
+
+const disabledButtonStyle = {
+  padding: '10px 14px',
+  border: '1px solid #e5e7eb',
+  borderRadius: 10,
+  background: '#f3f4f6',
+  color: '#9ca3af',
+  cursor: 'not-allowed',
+  fontSize: 14,
+}
+
+const smallButtonStyle = {
+  padding: '8px 10px',
+  border: '1px solid #d1d5db',
+  borderRadius: 8,
+  background: '#fff',
+  cursor: 'pointer',
+  fontSize: 13,
+}
+
+const smallDangerButtonStyle = {
+  padding: '8px 10px',
+  border: '1px solid #ef4444',
+  borderRadius: 8,
+  background: '#fff',
+  color: '#b91c1c',
+  cursor: 'pointer',
+  fontSize: 13,
+}
+
+const messageStyle = {
+  marginTop: 12,
+  color: '#111827',
+}
+
+const sectionTitleStyle = {
+  marginTop: 30,
+  color: '#111827',
+}
+
+const paginationInfoStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 12,
+  flexWrap: 'wrap',
+  marginTop: 12,
+  marginBottom: 12,
+  fontSize: 14,
+  color: '#374151',
+}
+
+const paginationWrapStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 12,
+  flexWrap: 'wrap',
+  marginTop: 16,
+}
+
+const table = {
+  marginTop: 10,
+  borderCollapse: 'collapse',
+  width: '100%',
 }
 
 const th = {
