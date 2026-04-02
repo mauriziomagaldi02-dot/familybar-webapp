@@ -80,14 +80,7 @@ export default function Home() {
 
   return (
     <Layout onLogout={handleLogout}>
-      <div>
-        <h1 style={pageTitleStyle}>Home</h1>
-        <p style={pageTextStyle}>
-          Seleziona una sezione dal menu qui sopra per accedere alle varie aree del gestionale.
-        </p>
-
-        {message && <p style={errorTextStyle}>{message}</p>}
-      </div>
+      {message && <p style={errorTextStyle}>{message}</p>}
     </Layout>
   )
 }
@@ -156,17 +149,4 @@ const primaryButtonStyle = {
 const errorTextStyle = {
   marginTop: 16,
   color: '#b91c1c',
-}
-
-const pageTitleStyle = {
-  margin: 0,
-  marginBottom: 12,
-  fontSize: 28,
-  color: '#111827',
-}
-
-const pageTextStyle = {
-  margin: 0,
-  color: '#6b7280',
-  lineHeight: 1.5,
 }
