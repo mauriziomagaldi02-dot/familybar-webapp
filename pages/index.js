@@ -78,11 +78,7 @@ export default function Home() {
     )
   }
 
-  return (
-    <Layout onLogout={handleLogout}>
-      {message && <p style={errorTextStyle}>{message}</p>}
-    </Layout>
-  )
+  return <Layout onLogout={handleLogout} />
 }
 
 const pageStyle = {
