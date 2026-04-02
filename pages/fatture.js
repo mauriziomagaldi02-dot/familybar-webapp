@@ -15,7 +15,7 @@ const initialForm = {
 
 export default function Fatture() {
   const [user, setUser] = useState(null)
-  const [rows, setRows] = useState([])
+  const [allRows, setAllRows] = useState([])
   const [suppliers, setSuppliers] = useState([])
   const [pointsOfSale, setPointsOfSale] = useState([])
   const [categories, setCategories] = useState([])
@@ -26,6 +26,9 @@ export default function Fatture() {
   const [selectedMonth, setSelectedMonth] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [currentPage, setCurrentPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -43,47 +46,15 @@ export default function Fatture() {
 
   useEffect(() => {
     if (user) loadData()
-  }, [user, selectedMonth])
-
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [selectedMonth, pageSize])
-
-  const mappingsBySupplier = useMemo(() => {
-    const map = new Map()
-    for (const row of mappings) {
-      if (row.supplier_id) map.set(String(row.supplier_id), row)
-    }
-    return map
-  }, [mappings])
-
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
-
-  const paginatedRows = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize
-    return rows.slice(startIndex, startIndex + pageSize)
-  }, [rows, currentPage, pageSize])
+  }, [user])
 
   async function handleLogout() {
     await supabase.auth.signOut()
   }
 
   async function loadData() {
+    setLoading(true)
     setMessage('')
-
-    let invoicesQuery = supabase
-      .from('invoices')
-      .select('*')
-      .order('invoice_date', { ascending: false })
-
-    if (selectedMonth) {
-      const startDate = `${selectedMonth}-01`
-      const endDate = `${getNextMonth(selectedMonth)}-01`
-
-      invoicesQuery = invoicesQuery
-        .gte('invoice_date', startDate)
-        .lt('invoice_date', endDate)
-    }
 
     const [
       { data: invoicesData, error: invoicesError },
@@ -92,10 +63,10 @@ export default function Fatture() {
       { data: categoriesData, error: categoriesError },
       { data: mappingsData, error: mappingsError },
     ] = await Promise.all([
-      invoicesQuery,
-      supabase.from('suppliers').select('*').order('name'),
-      supabase.from('points_of_sale').select('*').order('name'),
-      supabase.from('categories').select('*').order('name'),
+      supabase.from('invoices').select('*').order('invoice_date', { ascending: false }),
+      supabase.from('suppliers').select('*').order('name', { ascending: true }),
+      supabase.from('points_of_sale').select('*').order('name', { ascending: true }),
+      supabase.from('categories').select('*').order('name', { ascending: true }),
       supabase.from('supplier_mappings').select('*'),
     ])
 
@@ -108,15 +79,84 @@ export default function Fatture() {
           mappingsError?.message ||
           'Errore caricamento dati'
       )
+      setLoading(false)
       return
     }
 
-    setRows(invoicesData || [])
+    setAllRows(invoicesData || [])
     setSuppliers(suppliersData || [])
     setPointsOfSale(pvData || [])
     setCategories(categoriesData || [])
     setMappings(mappingsData || [])
+    setLoading(false)
   }
+
+  const mappingsBySupplier = useMemo(() => {
+    const map = new Map()
+    for (const row of mappings) {
+      if (row.supplier_id) {
+        map.set(String(row.supplier_id), row)
+      }
+    }
+    return map
+  }, [mappings])
+
+  const suppliersMap = useMemo(() => {
+    const map = {}
+    for (const row of suppliers) {
+      map[String(row.id)] = row.name
+    }
+    return map
+  }, [suppliers])
+
+  const pvMap = useMemo(() => {
+    const map = {}
+    for (const row of pointsOfSale) {
+      map[String(row.id)] = row.name
+    }
+    return map
+  }, [pointsOfSale])
+
+  const categoriesMap = useMemo(() => {
+    const map = {}
+    for (const row of categories) {
+      map[String(row.id)] = row.name
+    }
+    return map
+  }, [categories])
+
+  const filteredRows = useMemo(() => {
+    let result = [...allRows]
+
+    if (selectedMonth) {
+      const startDate = `${selectedMonth}-01`
+      const endDate = `${getNextMonth(selectedMonth)}-01`
+
+      result = result.filter((row) => {
+        const date = String(row.invoice_date || '')
+        return date >= startDate && date < endDate
+      })
+    }
+
+    result.sort((a, b) => {
+      const dateCompare = String(b.invoice_date || '').localeCompare(String(a.invoice_date || ''))
+      if (dateCompare !== 0) return dateCompare
+      return Number(b.id || 0) - Number(a.id || 0)
+    })
+
+    return result
+  }, [allRows, selectedMonth])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [selectedMonth, pageSize, filteredRows.length])
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
+
+  const paginatedRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize
+    return filteredRows.slice(startIndex, startIndex + pageSize)
+  }, [filteredRows, currentPage, pageSize])
 
   function applySupplierMapping(supplierId, currentForm = form) {
     const mapping = mappingsBySupplier.get(String(supplierId))
@@ -143,41 +183,86 @@ export default function Fatture() {
 
     const payload = {
       supplier_id: form.supplier_id || null,
-      invoice_number: form.invoice_number || null,
+      invoice_number: form.invoice_number.trim() || null,
       invoice_date: form.invoice_date || null,
-      amount: form.amount ? Number(form.amount) : null,
+      amount: form.amount !== '' ? Number(form.amount) : null,
       point_of_sale_id: form.is_general ? null : form.point_of_sale_id || null,
       category_id: form.category_id || null,
       is_general: !!form.is_general,
     }
 
+    if (!payload.supplier_id) {
+      setMessage('Seleziona il fornitore')
+      return
+    }
+
+    if (!payload.invoice_date) {
+      setMessage('Inserisci la data fattura')
+      return
+    }
+
+    if (payload.amount === null) {
+      setMessage('Inserisci l’imponibile')
+      return
+    }
+
+    if (!payload.is_general && !payload.point_of_sale_id) {
+      setMessage('Seleziona il punto vendita oppure marca la fattura come costo generale')
+      return
+    }
+
+    const duplicate = allRows.find((row) => {
+      if (editingId && row.id === editingId) return false
+
+      return (
+        String(row.supplier_id || '') === String(payload.supplier_id || '') &&
+        String(row.invoice_number || '').trim().toLowerCase() === String(payload.invoice_number || '').trim().toLowerCase() &&
+        String(row.invoice_date || '') === String(payload.invoice_date || '')
+      )
+    })
+
+    if (duplicate) {
+      setMessage('Esiste già una fattura con stesso fornitore, numero e data')
+      return
+    }
+
+    setSaving(true)
+
     if (editingId) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('invoices')
         .update(payload)
         .eq('id', editingId)
+        .select()
+        .single()
 
       if (error) {
         setMessage(error.message)
+        setSaving(false)
         return
       }
 
+      setAllRows((prev) => prev.map((row) => (row.id === editingId ? data : row)))
       setMessage('Fattura aggiornata.')
     } else {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('invoices')
         .insert(payload)
+        .select()
+        .single()
 
       if (error) {
         setMessage(error.message)
+        setSaving(false)
         return
       }
 
+      setAllRows((prev) => [data, ...prev])
       setMessage('Fattura inserita.')
     }
 
     resetForm()
-    loadData()
+    setSaving(false)
   }
 
   function handleEdit(row) {
@@ -192,11 +277,15 @@ export default function Fatture() {
       is_general: !!row.is_general,
     })
     setMessage('')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   async function handleDelete(id) {
     const conferma = window.confirm('Vuoi davvero cancellare questa fattura?')
     if (!conferma) return
+
+    setDeletingId(id)
+    setMessage('')
 
     const { error } = await supabase
       .from('invoices')
@@ -205,13 +294,18 @@ export default function Fatture() {
 
     if (error) {
       setMessage(error.message)
+      setDeletingId(null)
       return
     }
 
-    if (editingId === id) resetForm()
+    setAllRows((prev) => prev.filter((row) => row.id !== id))
+
+    if (editingId === id) {
+      resetForm()
+    }
 
     setMessage('Fattura cancellata.')
-    loadData()
+    setDeletingId(null)
   }
 
   function resetForm() {
@@ -220,15 +314,15 @@ export default function Fatture() {
   }
 
   function getSupplierName(id) {
-    return suppliers.find((s) => String(s.id) === String(id))?.name || ''
+    return suppliersMap[String(id)] || ''
   }
 
   function getPvName(id) {
-    return pointsOfSale.find((p) => String(p.id) === String(id))?.name || ''
+    return pvMap[String(id)] || ''
   }
 
   function getCategoryName(id) {
-    return categories.find((c) => String(c.id) === String(id))?.name || ''
+    return categoriesMap[String(id)] || ''
   }
 
   function goToPrevPage() {
@@ -362,9 +456,14 @@ export default function Fatture() {
         </select>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button type="submit" style={primaryButtonStyle}>
-            {editingId ? 'Aggiorna' : 'Salva fattura'}
+          <button
+            type="submit"
+            style={saving ? disabledPrimaryButtonStyle : primaryButtonStyle}
+            disabled={saving}
+          >
+            {saving ? 'Salvataggio...' : editingId ? 'Aggiorna' : 'Salva fattura'}
           </button>
+
           {editingId && (
             <button type="button" onClick={resetForm} style={secondaryButtonStyle}>
               Annulla
@@ -377,56 +476,71 @@ export default function Fatture() {
 
       <h2 style={sectionTitleStyle}>Elenco fatture</h2>
 
-      {rows.length === 0 ? (
+      {loading ? (
+        <p style={messageStyle}>Caricamento...</p>
+      ) : filteredRows.length === 0 ? (
         <p>Nessuna fattura presente.</p>
       ) : (
         <>
           <div style={paginationInfoStyle}>
             <span>
-              Totale fatture: <strong>{rows.length}</strong>
+              Totale fatture: <strong>{filteredRows.length}</strong>
             </span>
             <span>
               Pagina <strong>{currentPage}</strong> di <strong>{totalPages}</strong>
             </span>
           </div>
 
-          <table style={table}>
-            <thead>
-              <tr>
-                <th style={th}>Data</th>
-                <th style={th}>Numero</th>
-                <th style={th}>Imponibile</th>
-                <th style={th}>Fornitore</th>
-                <th style={th}>PV</th>
-                <th style={th}>Categoria</th>
-                <th style={th}>Generale</th>
-                <th style={th}>Azioni</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedRows.map((row) => (
-                <tr key={row.id}>
-                  <td style={td}>{row.invoice_date || ''}</td>
-                  <td style={td}>{row.invoice_number || ''}</td>
-                  <td style={td}>{row.amount || ''}</td>
-                  <td style={td}>{getSupplierName(row.supplier_id)}</td>
-                  <td style={td}>{row.is_general ? '' : getPvName(row.point_of_sale_id)}</td>
-                  <td style={td}>{getCategoryName(row.category_id)}</td>
-                  <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
-                  <td style={td}>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="button" onClick={() => handleEdit(row)} style={smallButtonStyle}>
-                        Modifica
-                      </button>
-                      <button type="button" onClick={() => handleDelete(row.id)} style={smallDangerButtonStyle}>
-                        Cancella
-                      </button>
-                    </div>
-                  </td>
+          <div style={tableWrapStyle}>
+            <table style={table}>
+              <thead>
+                <tr>
+                  <th style={th}>Data</th>
+                  <th style={th}>Numero</th>
+                  <th style={th}>Imponibile</th>
+                  <th style={th}>Fornitore</th>
+                  <th style={th}>PV</th>
+                  <th style={th}>Categoria</th>
+                  <th style={th}>Generale</th>
+                  <th style={th}>Azioni</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {paginatedRows.map((row) => (
+                  <tr key={row.id}>
+                    <td style={td}>{row.invoice_date || ''}</td>
+                    <td style={td}>{row.invoice_number || ''}</td>
+                    <td style={td}>{formatEuro(row.amount)}</td>
+                    <td style={td}>{getSupplierName(row.supplier_id)}</td>
+                    <td style={td}>{row.is_general ? '' : getPvName(row.point_of_sale_id)}</td>
+                    <td style={td}>{getCategoryName(row.category_id)}</td>
+                    <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
+                    <td style={td}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(row)}
+                          style={smallButtonStyle}
+                          disabled={deletingId === row.id}
+                        >
+                          Modifica
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(row.id)}
+                          style={deletingId === row.id ? disabledDangerButtonStyle : smallDangerButtonStyle}
+                          disabled={deletingId === row.id}
+                        >
+                          {deletingId === row.id ? 'Cancellazione...' : 'Cancella'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <div style={paginationWrapStyle}>
             <button
@@ -465,6 +579,13 @@ function getNextMonth(month) {
   }
 
   return `${nextYear}-${String(nextMonth).padStart(2, '0')}`
+}
+
+function formatEuro(value) {
+  return new Intl.NumberFormat('it-IT', {
+    style: 'currency',
+    currency: 'EUR',
+  }).format(Number(value || 0))
 }
 
 const pageHeaderStyle = {
@@ -541,6 +662,17 @@ const primaryButtonStyle = {
   fontWeight: 600,
 }
 
+const disabledPrimaryButtonStyle = {
+  padding: '10px 14px',
+  border: 'none',
+  borderRadius: 10,
+  background: '#9ca3af',
+  color: '#fff',
+  cursor: 'not-allowed',
+  fontSize: 14,
+  fontWeight: 600,
+}
+
 const secondaryButtonStyle = {
   padding: '10px 14px',
   border: '1px solid #d1d5db',
@@ -579,6 +711,16 @@ const smallDangerButtonStyle = {
   fontSize: 13,
 }
 
+const disabledDangerButtonStyle = {
+  padding: '8px 10px',
+  border: '1px solid #fca5a5',
+  borderRadius: 8,
+  background: '#fef2f2',
+  color: '#fca5a5',
+  cursor: 'not-allowed',
+  fontSize: 13,
+}
+
 const messageStyle = {
   marginTop: 16,
   color: '#111827',
@@ -608,20 +750,34 @@ const paginationWrapStyle = {
   marginTop: 16,
 }
 
-const table = {
-  borderCollapse: 'collapse',
+const tableWrapStyle = {
   width: '100%',
+  overflowX: 'auto',
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 16,
   marginTop: 12,
 }
 
+const table = {
+  borderCollapse: 'collapse',
+  width: '100%',
+  minWidth: 980,
+}
+
 const th = {
-  border: '1px solid #ccc',
-  padding: 8,
+  borderBottom: '1px solid #e5e7eb',
+  padding: 10,
   textAlign: 'left',
-  background: '#f5f5f5',
+  background: '#f9fafb',
+  color: '#111827',
+  fontSize: 14,
+  whiteSpace: 'nowrap',
 }
 
 const td = {
-  border: '1px solid #ccc',
-  padding: 8,
+  borderBottom: '1px solid #f1f5f9',
+  padding: 10,
+  fontSize: 14,
+  color: '#111827',
 }
