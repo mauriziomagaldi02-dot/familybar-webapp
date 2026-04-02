@@ -12,7 +12,7 @@ const initialForm = {
 
 export default function CostiPersonale() {
   const [user, setUser] = useState(null)
-  const [rows, setRows] = useState([])
+  const [allRows, setAllRows] = useState([])
   const [pointsOfSale, setPointsOfSale] = useState([])
   const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
@@ -20,6 +20,9 @@ export default function CostiPersonale() {
   const [selectedMonth, setSelectedMonth] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [currentPage, setCurrentPage] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -37,48 +40,69 @@ export default function CostiPersonale() {
 
   useEffect(() => {
     if (user) loadData()
-  }, [user, selectedMonth])
-
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [selectedMonth, pageSize])
-
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
-
-  const paginatedRows = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize
-    return rows.slice(startIndex, startIndex + pageSize)
-  }, [rows, currentPage, pageSize])
+  }, [user])
 
   async function handleLogout() {
     await supabase.auth.signOut()
   }
 
   async function loadData() {
+    setLoading(true)
     setMessage('')
 
-    let staffQuery = supabase
-      .from('staff_costs')
-      .select('*')
-      .order('period_month', { ascending: false })
-
-    if (selectedMonth) {
-      staffQuery = staffQuery.eq('period_month', selectedMonth)
-    }
-
     const [{ data, error }, { data: pvData, error: pvError }] = await Promise.all([
-      staffQuery,
-      supabase.from('points_of_sale').select('*').order('name'),
+      supabase
+        .from('staff_costs')
+        .select('*')
+        .order('period_month', { ascending: false }),
+      supabase.from('points_of_sale').select('*').order('name', { ascending: true }),
     ])
 
     if (error || pvError) {
       setMessage(error?.message || pvError?.message || 'Errore caricamento dati')
+      setLoading(false)
       return
     }
 
-    setRows(data || [])
+    setAllRows(data || [])
     setPointsOfSale(pvData || [])
+    setLoading(false)
   }
+
+  const pvMap = useMemo(() => {
+    const map = {}
+    for (const pv of pointsOfSale) {
+      map[String(pv.id)] = pv.name
+    }
+    return map
+  }, [pointsOfSale])
+
+  const filteredRows = useMemo(() => {
+    let result = [...allRows]
+
+    if (selectedMonth) {
+      result = result.filter((row) => String(row.period_month) === String(selectedMonth))
+    }
+
+    result.sort((a, b) => {
+      const monthCompare = String(b.period_month || '').localeCompare(String(a.period_month || ''))
+      if (monthCompare !== 0) return monthCompare
+      return Number(b.id || 0) - Number(a.id || 0)
+    })
+
+    return result
+  }, [allRows, selectedMonth])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [selectedMonth, pageSize, filteredRows.length])
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
+
+  const paginatedRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize
+    return filteredRows.slice(startIndex, startIndex + pageSize)
+  }, [filteredRows, currentPage, pageSize])
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -86,36 +110,58 @@ export default function CostiPersonale() {
 
     const payload = {
       period_month: form.period_month || null,
-      amount: form.amount ? Number(form.amount) : null,
-      worked_hours: form.worked_hours ? Number(form.worked_hours) : null,
+      amount: form.amount !== '' ? Number(form.amount) : null,
+      worked_hours: form.worked_hours !== '' ? Number(form.worked_hours) : null,
       point_of_sale_id: form.point_of_sale_id || null,
     }
 
+    if (!payload.period_month) {
+      setMessage('Seleziona il mese')
+      return
+    }
+
+    if (!payload.point_of_sale_id) {
+      setMessage('Seleziona il punto vendita')
+      return
+    }
+
+    setSaving(true)
+
     if (editingId) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('staff_costs')
         .update(payload)
         .eq('id', editingId)
+        .select()
+        .single()
 
       if (error) {
         setMessage(error.message)
+        setSaving(false)
         return
       }
 
+      setAllRows((prev) => prev.map((row) => (row.id === editingId ? data : row)))
       setMessage('Costo personale aggiornato.')
     } else {
-      const { error } = await supabase.from('staff_costs').insert(payload)
+      const { data, error } = await supabase
+        .from('staff_costs')
+        .insert(payload)
+        .select()
+        .single()
 
       if (error) {
         setMessage(error.message)
+        setSaving(false)
         return
       }
 
+      setAllRows((prev) => [data, ...prev])
       setMessage('Costo personale inserito.')
     }
 
     resetForm()
-    loadData()
+    setSaving(false)
   }
 
   function handleEdit(row) {
@@ -127,23 +173,32 @@ export default function CostiPersonale() {
       point_of_sale_id: row.point_of_sale_id || '',
     })
     setMessage('')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   async function handleDelete(id) {
     const conferma = window.confirm('Vuoi davvero cancellare questo costo del personale?')
     if (!conferma) return
 
+    setDeletingId(id)
+    setMessage('')
+
     const { error } = await supabase.from('staff_costs').delete().eq('id', id)
 
     if (error) {
       setMessage(error.message)
+      setDeletingId(null)
       return
     }
 
-    if (editingId === id) resetForm()
+    setAllRows((prev) => prev.filter((row) => row.id !== id))
+
+    if (editingId === id) {
+      resetForm()
+    }
 
     setMessage('Costo personale cancellato.')
-    loadData()
+    setDeletingId(null)
   }
 
   function resetForm() {
@@ -152,7 +207,7 @@ export default function CostiPersonale() {
   }
 
   function getPvName(id) {
-    return pointsOfSale.find((p) => String(p.id) === String(id))?.name || ''
+    return pvMap[String(id)] || ''
   }
 
   function goToPrevPage() {
@@ -186,6 +241,7 @@ export default function CostiPersonale() {
           onChange={(e) => setSelectedMonth(e.target.value)}
           style={filterInputStyle}
         />
+
         <button type="button" onClick={() => setSelectedMonth('')} style={secondaryButtonStyle}>
           Tutti
         </button>
@@ -203,10 +259,7 @@ export default function CostiPersonale() {
         </select>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        style={formWrapStyle}
-      >
+      <form onSubmit={handleSubmit} style={formWrapStyle}>
         <input
           type="month"
           value={form.period_month}
@@ -246,9 +299,14 @@ export default function CostiPersonale() {
         </select>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button type="submit" style={primaryButtonStyle}>
-            {editingId ? 'Aggiorna' : 'Salva'}
+          <button
+            type="submit"
+            style={saving ? disabledPrimaryButtonStyle : primaryButtonStyle}
+            disabled={saving}
+          >
+            {saving ? 'Salvataggio...' : editingId ? 'Aggiorna' : 'Salva'}
           </button>
+
           {editingId && (
             <button type="button" onClick={resetForm} style={secondaryButtonStyle}>
               Annulla
@@ -261,50 +319,65 @@ export default function CostiPersonale() {
 
       <h2 style={sectionTitleStyle}>Elenco</h2>
 
-      {rows.length === 0 ? (
+      {loading ? (
+        <p style={messageStyle}>Caricamento...</p>
+      ) : filteredRows.length === 0 ? (
         <p>Nessun costo del personale presente.</p>
       ) : (
         <>
           <div style={paginationInfoStyle}>
             <span>
-              Totale righe: <strong>{rows.length}</strong>
+              Totale righe: <strong>{filteredRows.length}</strong>
             </span>
             <span>
               Pagina <strong>{currentPage}</strong> di <strong>{totalPages}</strong>
             </span>
           </div>
 
-          <table style={table}>
-            <thead>
-              <tr>
-                <th style={th}>Mese</th>
-                <th style={th}>Costo</th>
-                <th style={th}>Ore</th>
-                <th style={th}>PV</th>
-                <th style={th}>Azioni</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedRows.map((row) => (
-                <tr key={row.id}>
-                  <td style={td}>{row.period_month || ''}</td>
-                  <td style={td}>{row.amount || ''}</td>
-                  <td style={td}>{row.worked_hours || ''}</td>
-                  <td style={td}>{getPvName(row.point_of_sale_id)}</td>
-                  <td style={td}>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="button" onClick={() => handleEdit(row)} style={smallButtonStyle}>
-                        Modifica
-                      </button>
-                      <button type="button" onClick={() => handleDelete(row.id)} style={smallDangerButtonStyle}>
-                        Cancella
-                      </button>
-                    </div>
-                  </td>
+          <div style={tableWrapStyle}>
+            <table style={table}>
+              <thead>
+                <tr>
+                  <th style={th}>Mese</th>
+                  <th style={th}>Costo</th>
+                  <th style={th}>Ore</th>
+                  <th style={th}>PV</th>
+                  <th style={th}>Azioni</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {paginatedRows.map((row) => (
+                  <tr key={row.id}>
+                    <td style={td}>{row.period_month || ''}</td>
+                    <td style={td}>{formatEuro(row.amount)}</td>
+                    <td style={td}>{formatNumber(row.worked_hours)}</td>
+                    <td style={td}>{getPvName(row.point_of_sale_id)}</td>
+                    <td style={td}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(row)}
+                          style={smallButtonStyle}
+                          disabled={deletingId === row.id}
+                        >
+                          Modifica
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(row.id)}
+                          style={deletingId === row.id ? disabledDangerButtonStyle : smallDangerButtonStyle}
+                          disabled={deletingId === row.id}
+                        >
+                          {deletingId === row.id ? 'Cancellazione...' : 'Cancella'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <div style={paginationWrapStyle}>
             <button
@@ -329,6 +402,17 @@ export default function CostiPersonale() {
       )}
     </Layout>
   )
+}
+
+function formatEuro(value) {
+  return new Intl.NumberFormat('it-IT', {
+    style: 'currency',
+    currency: 'EUR',
+  }).format(Number(value || 0))
+}
+
+function formatNumber(value) {
+  return Number(value || 0).toFixed(2)
 }
 
 const pageHeaderStyle = {
@@ -400,6 +484,17 @@ const primaryButtonStyle = {
   fontWeight: 600,
 }
 
+const disabledPrimaryButtonStyle = {
+  padding: '10px 14px',
+  border: 'none',
+  borderRadius: 10,
+  background: '#9ca3af',
+  color: '#fff',
+  cursor: 'not-allowed',
+  fontSize: 14,
+  fontWeight: 600,
+}
+
 const secondaryButtonStyle = {
   padding: '10px 14px',
   border: '1px solid #d1d5db',
@@ -438,6 +533,16 @@ const smallDangerButtonStyle = {
   fontSize: 13,
 }
 
+const disabledDangerButtonStyle = {
+  padding: '8px 10px',
+  border: '1px solid #fca5a5',
+  borderRadius: 8,
+  background: '#fef2f2',
+  color: '#fca5a5',
+  cursor: 'not-allowed',
+  fontSize: 13,
+}
+
 const messageStyle = {
   marginTop: 12,
   color: '#111827',
@@ -467,20 +572,33 @@ const paginationWrapStyle = {
   marginTop: 16,
 }
 
-const table = {
+const tableWrapStyle = {
+  width: '100%',
+  overflowX: 'auto',
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 16,
   marginTop: 10,
+}
+
+const table = {
   borderCollapse: 'collapse',
   width: '100%',
+  minWidth: 700,
 }
 
 const th = {
-  border: '1px solid #ccc',
-  padding: 8,
+  borderBottom: '1px solid #e5e7eb',
+  padding: 10,
   textAlign: 'left',
-  background: '#f5f5f5',
+  background: '#f9fafb',
+  color: '#111827',
+  fontSize: 14,
 }
 
 const td = {
-  border: '1px solid #ccc',
-  padding: 8,
+  borderBottom: '1px solid #f1f5f9',
+  padding: 10,
+  fontSize: 14,
+  color: '#111827',
 }
