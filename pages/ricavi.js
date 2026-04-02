@@ -11,7 +11,7 @@ const initialForm = {
 
 export default function Ricavi() {
   const [user, setUser] = useState(null)
-  const [allRows, setAllRows] = useState([])
+  const [rows, setRows] = useState([])
   const [pointsOfSale, setPointsOfSale] = useState([])
   const [form, setForm] = useState(initialForm)
   const [message, setMessage] = useState('')
@@ -19,9 +19,6 @@ export default function Ricavi() {
   const [selectedMonth, setSelectedMonth] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [currentPage, setCurrentPage] = useState(1)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [deletingId, setDeletingId] = useState(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user || null))
@@ -37,73 +34,54 @@ export default function Ricavi() {
 
   useEffect(() => {
     if (user) loadData()
-  }, [user])
+  }, [user, selectedMonth])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [selectedMonth, pageSize])
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize))
+
+  const paginatedRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize
+    return rows.slice(startIndex, startIndex + pageSize)
+  }, [rows, currentPage, pageSize])
 
   async function handleLogout() {
     await supabase.auth.signOut()
   }
 
   async function loadData() {
-    setLoading(true)
     setMessage('')
 
-    const [{ data: rev, error: revError }, { data: pv, error: pvError }] =
-      await Promise.all([
-        supabase.from('revenues').select('*').order('date', { ascending: false }),
-        supabase.from('points_of_sale').select('*').order('name', { ascending: true }),
-      ])
-
-    if (revError || pvError) {
-      setMessage(revError?.message || pvError?.message || 'Errore caricamento dati')
-      setLoading(false)
-      return
-    }
-
-    setAllRows(rev || [])
-    setPointsOfSale(pv || [])
-    setLoading(false)
-  }
-
-  const pvMap = useMemo(() => {
-    const map = {}
-    for (const pv of pointsOfSale) {
-      map[String(pv.id)] = pv.name
-    }
-    return map
-  }, [pointsOfSale])
-
-  const filteredRows = useMemo(() => {
-    let result = [...allRows]
+    let revenuesQuery = supabase
+      .from('revenues')
+      .select('*')
+      .order('date', { ascending: false })
 
     if (selectedMonth) {
       const startDate = `${selectedMonth}-01`
       const endDate = `${getNextMonth(selectedMonth)}-01`
 
-      result = result.filter((row) => {
-        const date = String(row.date || '')
-        return date >= startDate && date < endDate
-      })
+      revenuesQuery = revenuesQuery
+        .gte('date', startDate)
+        .lt('date', endDate)
     }
 
-    result.sort((a, b) => {
-      const dateCompare = String(b.date || '').localeCompare(String(a.date || ''))
-      if (dateCompare !== 0) return dateCompare
-      return Number(b.id || 0) - Number(a.id || 0)
-    })
+    const [{ data: rev, error: revError }, { data: pv, error: pvError }] =
+      await Promise.all([
+        revenuesQuery,
+        supabase.from('points_of_sale').select('*').order('name'),
+      ])
 
-    return result
-  }, [allRows, selectedMonth])
+    if (revError || pvError) {
+      setMessage(revError?.message || pvError?.message || 'Errore caricamento dati')
+      return
+    }
 
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [selectedMonth, pageSize, filteredRows.length])
-
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize))
-
-  const paginatedRows = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize
-    return filteredRows.slice(startIndex, startIndex + pageSize)
-  }, [filteredRows, currentPage, pageSize])
+    setRows(rev || [])
+    setPointsOfSale(pv || [])
+  }
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -111,77 +89,35 @@ export default function Ricavi() {
 
     const payload = {
       date: form.date || null,
-      amount: form.amount !== '' ? Number(form.amount) : null,
+      amount: form.amount ? Number(form.amount) : null,
       point_of_sale_id: form.point_of_sale_id || null,
     }
 
-    if (!payload.date) {
-      setMessage('Inserisci la data')
-      return
-    }
+    if (editingId) {
+      const { error } = await supabase
+        .from('revenues')
+        .update(payload)
+        .eq('id', editingId)
 
-    if (payload.amount === null || Number.isNaN(payload.amount)) {
-      setMessage('Inserisci l’importo')
-      return
-    }
-
-    if (!payload.point_of_sale_id) {
-      setMessage('Seleziona il punto vendita')
-      return
-    }
-
-    const duplicate = allRows.find((row) => {
-      if (editingId && row.id === editingId) return false
-
-      return (
-        String(row.date || '') === String(payload.date || '') &&
-        String(row.point_of_sale_id || '') === String(payload.point_of_sale_id || '')
-      )
-    })
-
-    if (duplicate) {
-      setMessage('Esiste già un ricavo per questo PV in questa data')
-      return
-    }
-
-    setSaving(true)
-
-    try {
-      if (editingId) {
-        const { data, error } = await supabase
-          .from('revenues')
-          .update(payload)
-          .eq('id', editingId)
-          .select()
-          .single()
-
-        if (error) {
-          setMessage(error.message)
-          return
-        }
-
-        setAllRows((prev) => prev.map((row) => (row.id === editingId ? data : row)))
-        setMessage('Ricavo aggiornato.')
-      } else {
-        const { data, error } = await supabase
-          .from('revenues')
-          .insert(payload)
-          .select()
-          .single()
-
-        if (error) {
-          setMessage(error.message)
-          return
-        }
-
-        setAllRows((prev) => [data, ...prev])
-        setMessage('Ricavo inserito.')
+      if (error) {
+        setMessage(error.message)
+        return
       }
 
-      resetForm()
-    } finally {
-      setSaving(false)
+      setMessage('Ricavo aggiornato.')
+    } else {
+      const { error } = await supabase.from('revenues').insert(payload)
+
+      if (error) {
+        setMessage(error.message)
+        return
+      }
+
+      setMessage('Ricavo inserito.')
     }
+
+    resetForm()
+    loadData()
   }
 
   function handleEdit(row) {
@@ -192,40 +128,23 @@ export default function Ricavi() {
       point_of_sale_id: row.point_of_sale_id || '',
     })
     setMessage('')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   async function handleDelete(id) {
     const conferma = window.confirm('Vuoi davvero cancellare questo ricavo?')
     if (!conferma) return
 
-    setDeletingId(id)
-    setMessage('')
+    const { error } = await supabase.from('revenues').delete().eq('id', id)
 
-    try {
-      const { data, error } = await supabase
-        .from('revenues')
-        .delete()
-        .eq('id', id)
-        .select('id')
-
-      if (error) {
-        setMessage(error.message)
-        return
-      }
-
-      if (!data || data.length === 0) {
-        setMessage('Il ricavo non è stato cancellato dal database. Controlla le policy Supabase.')
-        return
-      }
-
-      if (editingId === id) resetForm()
-
-      await loadData()
-      setMessage('Ricavo cancellato.')
-    } finally {
-      setDeletingId(null)
+    if (error) {
+      setMessage(error.message)
+      return
     }
+
+    if (editingId === id) resetForm()
+
+    setMessage('Ricavo cancellato.')
+    loadData()
   }
 
   function resetForm() {
@@ -234,7 +153,7 @@ export default function Ricavi() {
   }
 
   function getPvName(id) {
-    return pvMap[String(id)] || ''
+    return pointsOfSale.find((p) => String(p.id) === String(id))?.name || ''
   }
 
   function goToPrevPage() {
@@ -285,7 +204,10 @@ export default function Ricavi() {
         </select>
       </div>
 
-      <form onSubmit={handleSubmit} style={formWrapStyle}>
+      <form
+        onSubmit={handleSubmit}
+        style={formWrapStyle}
+      >
         <input
           type="date"
           value={form.date}
@@ -316,14 +238,9 @@ export default function Ricavi() {
         </select>
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <button
-            type="submit"
-            style={saving ? disabledPrimaryButtonStyle : primaryButtonStyle}
-            disabled={saving}
-          >
-            {saving ? 'Salvataggio...' : editingId ? 'Aggiorna' : 'Salva'}
+          <button type="submit" style={primaryButtonStyle}>
+            {editingId ? 'Aggiorna' : 'Salva'}
           </button>
-
           {editingId && (
             <button type="button" onClick={resetForm} style={secondaryButtonStyle}>
               Annulla
@@ -336,63 +253,48 @@ export default function Ricavi() {
 
       <h2 style={sectionTitleStyle}>Elenco ricavi</h2>
 
-      {loading ? (
-        <p style={messageStyle}>Caricamento...</p>
-      ) : filteredRows.length === 0 ? (
+      {rows.length === 0 ? (
         <p>Nessun ricavo presente.</p>
       ) : (
         <>
           <div style={paginationInfoStyle}>
             <span>
-              Totale ricavi: <strong>{filteredRows.length}</strong>
+              Totale ricavi: <strong>{rows.length}</strong>
             </span>
             <span>
               Pagina <strong>{currentPage}</strong> di <strong>{totalPages}</strong>
             </span>
           </div>
 
-          <div style={tableWrapStyle}>
-            <table style={table}>
-              <thead>
-                <tr>
-                  <th style={th}>Data</th>
-                  <th style={th}>Importo</th>
-                  <th style={th}>PV</th>
-                  <th style={th}>Azioni</th>
+          <table style={table}>
+            <thead>
+              <tr>
+                <th style={th}>Data</th>
+                <th style={th}>Importo</th>
+                <th style={th}>PV</th>
+                <th style={th}>Azioni</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedRows.map((row) => (
+                <tr key={row.id}>
+                  <td style={td}>{row.date || ''}</td>
+                  <td style={td}>{row.amount || ''}</td>
+                  <td style={td}>{getPvName(row.point_of_sale_id)}</td>
+                  <td style={td}>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="button" onClick={() => handleEdit(row)} style={smallButtonStyle}>
+                        Modifica
+                      </button>
+                      <button type="button" onClick={() => handleDelete(row.id)} style={smallDangerButtonStyle}>
+                        Cancella
+                      </button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {paginatedRows.map((row) => (
-                  <tr key={row.id}>
-                    <td style={td}>{row.date || ''}</td>
-                    <td style={td}>{formatEuro(row.amount)}</td>
-                    <td style={td}>{getPvName(row.point_of_sale_id)}</td>
-                    <td style={td}>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          onClick={() => handleEdit(row)}
-                          style={smallButtonStyle}
-                          disabled={deletingId === row.id || saving}
-                        >
-                          Modifica
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(row.id)}
-                          style={deletingId === row.id ? disabledDangerButtonStyle : smallDangerButtonStyle}
-                          disabled={deletingId === row.id || saving}
-                        >
-                          {deletingId === row.id ? 'Cancellazione...' : 'Cancella'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
 
           <div style={paginationWrapStyle}>
             <button
@@ -430,13 +332,6 @@ function getNextMonth(month) {
   }
 
   return `${nextYear}-${String(nextMonth).padStart(2, '0')}`
-}
-
-function formatEuro(value) {
-  return new Intl.NumberFormat('it-IT', {
-    style: 'currency',
-    currency: 'EUR',
-  }).format(Number(value || 0))
 }
 
 const pageHeaderStyle = {
@@ -508,17 +403,6 @@ const primaryButtonStyle = {
   fontWeight: 600,
 }
 
-const disabledPrimaryButtonStyle = {
-  padding: '10px 14px',
-  border: 'none',
-  borderRadius: 10,
-  background: '#9ca3af',
-  color: '#fff',
-  cursor: 'not-allowed',
-  fontSize: 14,
-  fontWeight: 600,
-}
-
 const secondaryButtonStyle = {
   padding: '10px 14px',
   border: '1px solid #d1d5db',
@@ -557,16 +441,6 @@ const smallDangerButtonStyle = {
   fontSize: 13,
 }
 
-const disabledDangerButtonStyle = {
-  padding: '8px 10px',
-  border: '1px solid #fca5a5',
-  borderRadius: 8,
-  background: '#fef2f2',
-  color: '#fca5a5',
-  cursor: 'not-allowed',
-  fontSize: 13,
-}
-
 const messageStyle = {
   marginTop: 12,
   color: '#111827',
@@ -596,34 +470,20 @@ const paginationWrapStyle = {
   marginTop: 16,
 }
 
-const tableWrapStyle = {
-  width: '100%',
-  overflowX: 'auto',
-  background: '#fff',
-  border: '1px solid #e5e7eb',
-  borderRadius: 16,
-  marginTop: 10,
-}
-
 const table = {
-  marginTop: 0,
+  marginTop: 10,
   borderCollapse: 'collapse',
   width: '100%',
-  minWidth: 680,
 }
 
 const th = {
-  borderBottom: '1px solid #e5e7eb',
-  padding: 10,
+  border: '1px solid #ccc',
+  padding: 8,
   textAlign: 'left',
-  background: '#f9fafb',
-  color: '#111827',
-  fontSize: 14,
+  background: '#f5f5f5',
 }
 
 const td = {
-  borderBottom: '1px solid #f1f5f9',
-  padding: 10,
-  fontSize: 14,
-  color: '#111827',
+  border: '1px solid #ccc',
+  padding: 8,
 }
