@@ -14,11 +14,7 @@ const menuItems = [
   { href: '/fornitori', label: 'Fornitori' },
 ]
 
-export default function Layout({
-  children,
-  onLogout,
-  hideMenu = false,
-  compactMenu = false,
+export default function Layout({ children, onLogout, hideMenu = false, compactMenu = false }) {
 }) {
   return (
     <div style={pageStyle}>
