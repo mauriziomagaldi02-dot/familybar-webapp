@@ -550,16 +550,6 @@ export default function Analisi() {
             </div>
           </div>
 
-          <div style={exportRowStyle}>
-            <button
-              type="button"
-              onClick={exportSupplierAnalysisCsv}
-              style={primaryButtonStyle}
-            >
-              Export CSV analisi fornitore
-            </button>
-          </div>
-
           <div style={tableWrapStyle}>
             <table style={table}>
               <thead>
@@ -583,6 +573,16 @@ export default function Analisi() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div style={exportRowStyle}>
+            <button
+              type="button"
+              onClick={exportSupplierAnalysisCsv}
+              style={primaryButtonStyle}
+            >
+              Export CSV analisi fornitore
+            </button>
           </div>
 
           <h2 style={sectionTitleStyle}>Pareto fornitori 80/20</h2>
@@ -639,16 +639,6 @@ export default function Analisi() {
             </div>
           </div>
 
-          <div style={exportRowStyle}>
-            <button
-              type="button"
-              onClick={exportParetoSuppliersCsv}
-              style={primaryButtonStyle}
-            >
-              Export CSV pareto fornitori
-            </button>
-          </div>
-
           <div style={tableWrapStyle}>
             <table style={table}>
               <thead>
@@ -676,6 +666,16 @@ export default function Analisi() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div style={exportRowStyle}>
+            <button
+              type="button"
+              onClick={exportParetoSuppliersCsv}
+              style={primaryButtonStyle}
+            >
+              Export CSV pareto fornitori
+            </button>
           </div>
 
           <h2 style={sectionTitleStyle}>Analisi per categoria</h2>
