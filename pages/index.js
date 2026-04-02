@@ -1,4 +1,3 @@
-import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import Layout from '../components/Layout'
@@ -47,11 +46,7 @@ export default function Home() {
         <div style={loginWrapStyle}>
           <div style={loginCardStyle}>
             <div style={logoWrapStyle}>
-              <img
-                src="/logo.png"
-                alt="logo"
-                style={logoLoginStyle}
-              />
+              <img src="/logo.png" alt="logo" style={logoLoginStyle} />
             </div>
 
             <form onSubmit={handleLogin} style={formStyle}>
@@ -86,88 +81,7 @@ export default function Home() {
   return (
     <Layout onLogout={handleLogout}>
       {message && <p style={errorTextStyle}>{message}</p>}
-
-      <div style={menuSectionStyle}>
-        <MenuLink
-          href="/dashboard"
-          label="Dashboard"
-          icon="📊"
-          note="Sintesi mensile e semafori"
-        />
-
-        <MenuLink
-          href="/analisi"
-          label="Analisi avanzata"
-          icon="📈"
-          note="Pareto, grafici e confronto dati"
-        />
-
-        <MenuLink
-          href="/fatture"
-          label="Fatture"
-          icon="🧾"
-          note="Gestione acquisti e imponibili"
-        />
-
-        <MenuLink
-          href="/ricavi"
-          label="Ricavi"
-          icon="💶"
-          note="Inserimento ricavi per PV"
-        />
-
-        <MenuLink
-          href="/costi-personale"
-          label="Costi personale"
-          icon="👥"
-          note="Costo lavoro e ore"
-        />
-
-        <MenuLink
-          href="/spese-manuali"
-          label="Spese manuali"
-          icon="📝"
-          note="Costi extra e costi generali"
-        />
-
-        <MenuLink
-          href="/import-xml"
-          label="Import XML"
-          icon="📂"
-          note="Importazione FatturaPA"
-        />
-
-        <MenuLink
-          href="/mappature"
-          label="Mappature fornitori"
-          icon="🧩"
-          note="Regole automatiche di assegnazione"
-        />
-
-        <MenuLink
-          href="/fornitori"
-          label="Fornitori"
-          icon="🏷️"
-          note="Anagrafica, P.IVA e codice fiscale"
-        />
-      </div>
     </Layout>
-  )
-}
-
-function MenuLink({ href, label, icon, note }) {
-  return (
-    <Link href={href} style={menuCardStyle}>
-      <div style={menuTopRowStyle}>
-        <div style={menuIconStyle}>{icon}</div>
-        <div style={menuArrowStyle}>→</div>
-      </div>
-
-      <div>
-        <div style={menuTitleStyle}>{label}</div>
-        <div style={menuNoteStyle}>{note}</div>
-      </div>
-    </Link>
   )
 }
 
@@ -209,64 +123,6 @@ const logoLoginStyle = {
 const formStyle = {
   display: 'grid',
   gap: 14,
-}
-
-const menuSectionStyle = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-  gap: 16,
-}
-
-const menuCardStyle = {
-  display: 'flex',
-  flexDirection: 'column',
-  justifyContent: 'space-between',
-  minHeight: 140,
-  padding: 18,
-  border: '1px solid #e5e7eb',
-  borderRadius: 16,
-  background: '#ffffff',
-  textDecoration: 'none',
-  color: '#111827',
-  boxShadow: '0 4px 14px rgba(0,0,0,0.04)',
-  transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-}
-
-const menuTopRowStyle = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  marginBottom: 18,
-}
-
-const menuIconStyle = {
-  width: 40,
-  height: 40,
-  borderRadius: 12,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: '#f3f4f6',
-  fontSize: 20,
-}
-
-const menuArrowStyle = {
-  color: '#9ca3af',
-  fontSize: 20,
-  fontWeight: 700,
-}
-
-const menuTitleStyle = {
-  fontSize: 17,
-  fontWeight: 700,
-  color: '#111827',
-  marginBottom: 6,
-}
-
-const menuNoteStyle = {
-  fontSize: 13,
-  color: '#6b7280',
-  lineHeight: 1.4,
 }
 
 const inputStyle = {
