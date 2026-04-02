@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
+import Layout from '../components/Layout'
 
 export default function ImportXml() {
   const [user, setUser] = useState(null)
@@ -62,6 +63,10 @@ export default function ImportXml() {
     }
     return map
   }, [mappings])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+  }
 
   async function loadReferenceData() {
     setMessage('')
@@ -133,11 +138,15 @@ export default function ImportXml() {
           is_general: !!mapping?.is_general,
           will_create_supplier: !matchedSupplier,
           match_type: matchedSupplier
-            ? normalizedVat && matchedSupplier.vat_number && normalizeVatOrTaxCode(matchedSupplier.vat_number) === normalizedVat
+            ? normalizedVat &&
+              matchedSupplier.vat_number &&
+              normalizeVatOrTaxCode(matchedSupplier.vat_number) === normalizedVat
               ? 'P.IVA'
-              : normalizedTaxCode && matchedSupplier.tax_code && normalizeVatOrTaxCode(matchedSupplier.tax_code) === normalizedTaxCode
-              ? 'Codice fiscale'
-              : 'Nome'
+              : normalizedTaxCode &&
+                  matchedSupplier.tax_code &&
+                  normalizeVatOrTaxCode(matchedSupplier.tax_code) === normalizedTaxCode
+                ? 'Codice fiscale'
+                : 'Nome'
             : '',
         })
       } catch (error) {
@@ -313,7 +322,7 @@ export default function ImportXml() {
           supplier_name: row.supplier_name || null,
           invoice_date: row.invoice_date || null,
           invoice_number: row.invoice_number || null,
-          amount: row.amount ? Number(row.amount) : null, // imponibile
+          amount: row.amount ? Number(row.amount) : null,
           point_of_sale_id: mapping?.is_general ? null : mapping?.point_of_sale_id || null,
           category_id: mapping?.category_id || null,
           is_general: !!mapping?.is_general,
@@ -357,39 +366,44 @@ export default function ImportXml() {
   }
 
   return (
-    <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-        <h1 style={{ margin: 0 }}>Import XML Fatture</h1>
-        <Link href="/">Home</Link>
+    <Layout onLogout={handleLogout} compactMenu>
+      <div style={pageHeaderStyle}>
+        <h1 style={pageTitleStyle}>Import XML Fatture</h1>
       </div>
 
-      <div style={{ marginTop: 24, display: 'grid', gap: 12, maxWidth: 700 }}>
+      <div style={uploadWrapStyle}>
         <input
           type="file"
           accept=".xml,text/xml,application/xml"
           multiple
           onChange={handleFilesChange}
+          style={fieldStyle}
         />
 
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button
             type="button"
             onClick={handleImport}
             disabled={isImporting || previewRows.length === 0}
+            style={
+              isImporting || previewRows.length === 0
+                ? disabledButtonStyle
+                : primaryButtonStyle
+            }
           >
             {isImporting ? 'Importazione in corso...' : 'Importa fatture'}
           </button>
         </div>
       </div>
 
-      {message && <p style={{ marginTop: 16 }}>{message}</p>}
+      {message && <p style={messageStyle}>{message}</p>}
 
-      <h2 style={{ marginTop: 32 }}>Anteprima import</h2>
+      <h2 style={sectionTitleStyle}>Anteprima import</h2>
 
       {previewRows.length === 0 ? (
         <p>Nessun file caricato.</p>
       ) : (
-        <table style={{ borderCollapse: 'collapse', width: '100%', marginTop: 12 }}>
+        <table style={table}>
           <thead>
             <tr>
               <th style={th}>File</th>
@@ -420,17 +434,17 @@ export default function ImportXml() {
                   {row.error
                     ? `Errore: ${row.error}`
                     : row.supplier_id
-                    ? 'Pronto'
-                    : row.will_create_supplier
-                    ? 'Nuovo fornitore: verrà creato'
-                    : 'Pronto'}
+                      ? 'Pronto'
+                      : row.will_create_supplier
+                        ? 'Nuovo fornitore: verrà creato'
+                        : 'Pronto'}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-    </div>
+    </Layout>
   )
 }
 
@@ -550,6 +564,78 @@ function sanitizeNumber(value) {
 
 function joinParts(...parts) {
   return parts.filter(Boolean).join(' ').trim()
+}
+
+const pageHeaderStyle = {
+  display: 'flex',
+  gap: 16,
+  alignItems: 'center',
+  marginBottom: 20,
+}
+
+const pageTitleStyle = {
+  margin: 0,
+  color: '#111827',
+  fontSize: 28,
+}
+
+const uploadWrapStyle = {
+  marginTop: 24,
+  display: 'grid',
+  gap: 12,
+  maxWidth: 700,
+  padding: 20,
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 16,
+}
+
+const fieldStyle = {
+  width: '100%',
+  padding: '12px 14px',
+  border: '1px solid #d1d5db',
+  borderRadius: 12,
+  fontSize: 15,
+  outline: 'none',
+  boxSizing: 'border-box',
+  background: '#fff',
+}
+
+const primaryButtonStyle = {
+  padding: '10px 14px',
+  border: 'none',
+  borderRadius: 10,
+  background: '#111827',
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
+  fontWeight: 600,
+}
+
+const disabledButtonStyle = {
+  padding: '10px 14px',
+  border: '1px solid #e5e7eb',
+  borderRadius: 10,
+  background: '#f3f4f6',
+  color: '#9ca3af',
+  cursor: 'not-allowed',
+  fontSize: 14,
+}
+
+const messageStyle = {
+  marginTop: 16,
+  color: '#111827',
+}
+
+const sectionTitleStyle = {
+  marginTop: 32,
+  color: '#111827',
+}
+
+const table = {
+  borderCollapse: 'collapse',
+  width: '100%',
+  marginTop: 12,
 }
 
 const th = {
