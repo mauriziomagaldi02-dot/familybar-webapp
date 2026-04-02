@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
+import Layout from '../components/Layout'
 
 export default function Dashboard() {
   const [user, setUser] = useState(null)
@@ -37,6 +38,10 @@ export default function Dashboard() {
   useEffect(() => {
     buildDashboardRows()
   }, [revenues, invoices, staffCosts, manualCosts, pointsOfSale, selectedMonth, selectedPv])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+  }
 
   async function loadData() {
     setMessage('')
@@ -256,66 +261,33 @@ export default function Dashboard() {
 
   if (!user) {
     return (
-return (
-    <div style={{ background: '#f6f7f9', minHeight: '100vh' }}>
-
-    <div style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: 16,
-      background: '#ffffff',
-      borderBottom: '1px solid #ddd'
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <img src="/logo.png" style={{ height: 40 }} />
-        <b>Business Analytics</b>
-      </div>
-
-      <button
-        onClick={async () => {
-          await supabase.auth.signOut()
-          window.location.href = '/'
-        }}
-      >
-        Logout
-      </button>
-    </div>
-          </div>
-
-    <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>        <p>Devi accedere</p>
+      <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
+        <p>Devi accedere</p>
         <Link href="/">Torna alla home</Link>
       </div>
     )
   }
 
   return (
-    <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 20 }}>
-        <h1 style={{ margin: 0 }}>Dashboard</h1>
-        <Link href="/">Home</Link>
+    <Layout onLogout={handleLogout}>
+      <div style={pageHeaderStyle}>
+        <h1 style={pageTitleStyle}>Dashboard</h1>
       </div>
 
-      <div
-        style={{
-          marginBottom: 20,
-          display: 'flex',
-          gap: 12,
-          alignItems: 'center',
-          flexWrap: 'wrap',
-        }}
-      >
-        <label>Mese di riferimento</label>
+      <div style={filtersWrapStyle}>
+        <label style={filterLabelStyle}>Mese di riferimento</label>
         <input
           type="month"
           value={selectedMonth}
           onChange={(e) => setSelectedMonth(e.target.value)}
+          style={filterInputStyle}
         />
 
-        <label>PV</label>
+        <label style={filterLabelStyle}>PV</label>
         <select
           value={selectedPv}
           onChange={(e) => setSelectedPv(e.target.value)}
+          style={filterInputStyle}
         >
           <option value="">Tutti i PV</option>
           {pointsOfSale.map((pv) => (
@@ -325,17 +297,18 @@ return (
           ))}
         </select>
 
-        <label>Trend</label>
+        <label style={filterLabelStyle}>Trend</label>
         <select
           value={trendMonths}
           onChange={(e) => setTrendMonths(Number(e.target.value))}
+          style={filterInputStyle}
         >
           <option value={6}>Ultimi 6 mesi</option>
           <option value={12}>Ultimi 12 mesi</option>
         </select>
       </div>
 
-      {message && <p style={{ color: 'red', marginTop: 16 }}>{message}</p>}
+      {message && <p style={errorTextStyle}>{message}</p>}
 
       <table style={table}>
         <thead>
@@ -440,7 +413,7 @@ return (
       </table>
 
       <div style={{ marginTop: 32 }}>
-        <h2 style={{ marginBottom: 12 }}>Trend mensile</h2>
+        <h2 style={{ marginBottom: 12, color: '#111827' }}>Trend mensile</h2>
 
         <TrendLineChart data={trendChartData} />
 
@@ -491,7 +464,7 @@ return (
           </tbody>
         </table>
       </div>
-    </div>
+    </Layout>
   )
 }
 
@@ -872,6 +845,46 @@ function formatTrend(value) {
   if (value === null || value === undefined) return 'n.d.'
   const symbol = value > 2 ? '↑' : value < -2 ? '↓' : '→'
   return `${symbol} ${Number(value).toFixed(2)}%`
+}
+
+const pageHeaderStyle = {
+  display: 'flex',
+  gap: 16,
+  alignItems: 'center',
+  marginBottom: 20,
+}
+
+const pageTitleStyle = {
+  margin: 0,
+  color: '#111827',
+  fontSize: 28,
+}
+
+const filtersWrapStyle = {
+  marginBottom: 20,
+  display: 'flex',
+  gap: 12,
+  alignItems: 'center',
+  flexWrap: 'wrap',
+}
+
+const filterLabelStyle = {
+  fontSize: 14,
+  fontWeight: 600,
+  color: '#374151',
+}
+
+const filterInputStyle = {
+  padding: '10px 12px',
+  border: '1px solid #d1d5db',
+  borderRadius: 10,
+  fontSize: 14,
+  background: '#fff',
+}
+
+const errorTextStyle = {
+  marginTop: 16,
+  color: '#b91c1c',
 }
 
 const table = {
