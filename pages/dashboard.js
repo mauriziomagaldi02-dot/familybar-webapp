@@ -8,6 +8,8 @@ export default function Dashboard() {
   const [rows, setRows] = useState([])
   const [pointsOfSale, setPointsOfSale] = useState([])
   const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(true)
+
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth())
   const [selectedPv, setSelectedPv] = useState('')
   const [trendMonths, setTrendMonths] = useState(6)
@@ -44,6 +46,7 @@ export default function Dashboard() {
   }
 
   async function loadData() {
+    setLoading(true)
     setMessage('')
 
     const [
@@ -53,7 +56,7 @@ export default function Dashboard() {
       { data: staffData, error: staffError },
       { data: manualCostsData, error: manualError },
     ] = await Promise.all([
-      supabase.from('points_of_sale').select('*').order('name'),
+      supabase.from('points_of_sale').select('*').order('name', { ascending: true }),
       supabase.from('revenues').select('*'),
       supabase.from('invoices').select('*'),
       supabase.from('staff_costs').select('*'),
@@ -69,6 +72,7 @@ export default function Dashboard() {
 
     if (err) {
       setMessage(err)
+      setLoading(false)
       return
     }
 
@@ -77,6 +81,7 @@ export default function Dashboard() {
     setInvoices(invoicesData || [])
     setStaffCosts(staffData || [])
     setManualCosts(manualCostsData || [])
+    setLoading(false)
   }
 
   function buildDashboardRows() {
@@ -143,6 +148,7 @@ export default function Dashboard() {
         costiFattureImponibile + costoPersonale + speseManualiDirette + quotaGenerali
 
       const margine = ricavi - costiTotali
+      const marginePerc = ricavi > 0 ? (margine / ricavi) * 100 : 0
       const produttivitaOraria = ore > 0 ? ricavi / ore : 0
       const costoPersonalePerc = ricavi > 0 ? (costoPersonale / ricavi) * 100 : 0
 
@@ -156,6 +162,7 @@ export default function Dashboard() {
         quotaGenerali,
         costiTotali,
         margine,
+        marginePerc,
         ore,
         produttivitaOraria,
         costoPersonalePerc,
@@ -188,6 +195,41 @@ export default function Dashboard() {
         margine: 0,
         ore: 0,
       }
+    )
+  }, [rows])
+
+  const overallMetrics = useMemo(() => {
+    const costiTotali = totals.costiTotali
+    const marginePerc = totals.ricavi > 0 ? (totals.margine / totals.ricavi) * 100 : 0
+    const produttivitaMedia = totals.ore > 0 ? totals.ricavi / totals.ore : 0
+    const costoPersonalePerc = totals.ricavi > 0 ? (totals.costoPersonale / totals.ricavi) * 100 : 0
+
+    return {
+      costiTotali,
+      marginePerc,
+      produttivitaMedia,
+      costoPersonalePerc,
+    }
+  }, [totals])
+
+  const extraKpi = useMemo(() => {
+    if (!rows.length) return null
+
+    const bestPv = [...rows].sort((a, b) => b.margine - a.margine)[0]
+    const worstPv = [...rows].sort((a, b) => a.margine - b.margine)[0]
+
+    return {
+      bestPv,
+      worstPv,
+    }
+  }, [rows])
+
+  const alerts = useMemo(() => {
+    return rows.filter(
+      (r) =>
+        r.margine < 0 ||
+        r.produttivitaOraria < 35 ||
+        r.costoPersonalePerc > 35
     )
   }, [rows])
 
@@ -310,168 +352,225 @@ export default function Dashboard() {
 
       {message && <p style={errorTextStyle}>{message}</p>}
 
-      <table style={table}>
-        <thead>
-          <tr>
-            <th style={th}>PV</th>
-            <th style={th}>Ricavi</th>
-            <th style={th}>Costi fatture (imponibile)</th>
-            <th style={th}>Costo personale</th>
-            <th style={th}>Spese manuali dirette</th>
-            <th style={th}>Quota costi generali</th>
-            <th style={th}>Costi totali</th>
-            <th style={th}>Margine €</th>
-            <th style={th}>Ore</th>
-            <th style={th}>Produttività €/h</th>
-            <th style={th}>Costo pers. % ricavi</th>
-            <th style={th}>Stato</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.id}>
-              <td style={td}>{row.nome}</td>
-              <td style={td}>{formatEuro(row.ricavi)}</td>
-              <td style={td}>{formatEuro(row.costiFattureImponibile)}</td>
-              <td style={td}>{formatEuro(row.costoPersonale)}</td>
-              <td style={td}>{formatEuro(row.speseManualiDirette)}</td>
-              <td style={td}>{formatEuro(row.quotaGenerali)}</td>
-              <td style={td}>{formatEuro(row.costiTotali)}</td>
-              <td style={{ ...td, ...getMargineStyle(row.margine), fontWeight: 700 }}>
-                {formatEuro(row.margine)}
-              </td>
-              <td style={td}>{formatNumber(row.ore)}</td>
-              <td style={{ ...td, ...getProduttivitaStyle(row.produttivitaOraria) }}>
-                {formatEuro(row.produttivitaOraria)}
-              </td>
-              <td style={{ ...td, ...getCostoPersonalePercStyle(row.costoPersonalePerc) }}>
-                {formatPercent(row.costoPersonalePerc)}
-              </td>
-              <td style={td}>
-                <span style={badgeStyle(getOverallStatus(row))}>
-                  {getOverallStatusLabel(row)}
-                </span>
-              </td>
-            </tr>
-          ))}
+      {loading ? (
+        <p style={loadingTextStyle}>Caricamento dati...</p>
+      ) : (
+        <>
+          <div style={kpiGridStyle}>
+            <KpiCard title="Ricavi" value={formatEuro(totals.ricavi)} />
+            <KpiCard title="Costi totali" value={formatEuro(overallMetrics.costiTotali)} />
+            <KpiCard
+              title="Margine €"
+              value={formatEuro(totals.margine)}
+              color={totals.margine >= 0 ? '#065f46' : '#b91c1c'}
+            />
+            <KpiCard
+              title="Margine %"
+              value={formatPercent(overallMetrics.marginePerc)}
+              color={overallMetrics.marginePerc >= 0 ? '#065f46' : '#b91c1c'}
+            />
+          </div>
 
-          <tr>
-            <td style={{ ...td, fontWeight: 700 }}>Totale</td>
-            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.ricavi)}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.costiFattureImponibile)}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.costoPersonale)}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.speseManualiDirette)}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.quotaGenerali)}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.costiTotali)}</td>
-            <td style={{ ...td, ...getMargineStyle(totals.margine), fontWeight: 700 }}>
-              {formatEuro(totals.margine)}
-            </td>
-            <td style={{ ...td, fontWeight: 700 }}>{formatNumber(totals.ore)}</td>
-            <td
-              style={{
-                ...td,
-                ...getProduttivitaStyle(totals.ore > 0 ? totals.ricavi / totals.ore : 0),
-                fontWeight: 700,
-              }}
-            >
-              {formatEuro(totals.ore > 0 ? totals.ricavi / totals.ore : 0)}
-            </td>
-            <td
-              style={{
-                ...td,
-                ...getCostoPersonalePercStyle(
-                  totals.ricavi > 0 ? (totals.costoPersonale / totals.ricavi) * 100 : 0
-                ),
-                fontWeight: 700,
-              }}
-            >
-              {formatPercent(
-                totals.ricavi > 0 ? (totals.costoPersonale / totals.ricavi) * 100 : 0
-              )}
-            </td>
-            <td style={td}>
-              <span
-                style={badgeStyle(
-                  getOverallStatus({
-                    produttivitaOraria: totals.ore > 0 ? totals.ricavi / totals.ore : 0,
-                    margine: totals.margine,
-                    costoPersonalePerc:
-                      totals.ricavi > 0 ? (totals.costoPersonale / totals.ricavi) * 100 : 0,
-                  })
-                )}
-              >
-                {getOverallStatusLabel({
-                  produttivitaOraria: totals.ore > 0 ? totals.ricavi / totals.ore : 0,
-                  margine: totals.margine,
-                  costoPersonalePerc:
-                    totals.ricavi > 0 ? (totals.costoPersonale / totals.ricavi) * 100 : 0,
-                })}
-              </span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+          {extraKpi && (
+            <div style={kpiGridStyle}>
+              <KpiCard title="Produttività media" value={formatEuro(overallMetrics.produttivitaMedia)} />
+              <KpiCard title="Costo personale %" value={formatPercent(overallMetrics.costoPersonalePerc)} />
+              <KpiCard title="Miglior PV" value={extraKpi.bestPv?.nome || '-'} />
+              <KpiCard title="Peggior PV" value={extraKpi.worstPv?.nome || '-'} />
+            </div>
+          )}
 
-      <div style={{ marginTop: 32 }}>
-        <h2 style={{ marginBottom: 12, color: '#111827' }}>Trend mensile</h2>
+          {alerts.length > 0 && (
+            <div style={alertBoxStyle}>
+              <div style={alertTitleStyle}>⚠️ Attenzione</div>
+              <ul style={alertListStyle}>
+                {alerts.map((a) => (
+                  <li key={a.id}>
+                    <strong>{a.nome}</strong> – margine {formatEuro(a.margine)} / prod. {formatEuro(a.produttivitaOraria)} / costo pers. {formatPercent(a.costoPersonalePerc)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-        <TrendLineChart data={trendChartData} />
+          <h2 style={sectionTitleStyle}>Sintesi per punto vendita</h2>
 
-        <table style={table}>
-          <thead>
-            <tr>
-              <th style={th}>Mese</th>
-              <th style={th}>Ricavi</th>
-              <th style={th}>Costi fatture</th>
-              <th style={th}>Costo personale</th>
-              <th style={th}>Spese manuali dirette</th>
-              <th style={th}>Quota generali</th>
-              <th style={th}>Costi totali</th>
-              <th style={th}>Margine €</th>
-              <th style={th}>Margine %</th>
-              <th style={th}>Ore</th>
-              <th style={th}>Produttività €/h</th>
-              <th style={th}>Trend ricavi</th>
-              <th style={th}>Trend margine</th>
-            </tr>
-          </thead>
-          <tbody>
-            {trendRows.map((row) => (
-              <tr key={row.monthKey}>
-                <td style={td}>{formatMonthLabel(row.monthKey)}</td>
-                <td style={td}>{formatEuro(row.ricavi)}</td>
-                <td style={td}>{formatEuro(row.costiFattureImponibile)}</td>
-                <td style={td}>{formatEuro(row.costoPersonale)}</td>
-                <td style={td}>{formatEuro(row.speseManualiDirette)}</td>
-                <td style={td}>{formatEuro(row.quotaGenerali)}</td>
-                <td style={td}>{formatEuro(row.costiTotali)}</td>
-                <td style={{ ...td, ...getMargineStyle(row.margine), fontWeight: 700 }}>
-                  {formatEuro(row.margine)}
-                </td>
-                <td style={td}>{formatPercent(row.marginePerc)}</td>
-                <td style={td}>{formatNumber(row.ore)}</td>
-                <td style={{ ...td, ...getProduttivitaStyle(row.produttivitaOraria) }}>
-                  {formatEuro(row.produttivitaOraria)}
-                </td>
-                <td style={{ ...td, ...getTrendStyle(row.trendRicaviPerc) }}>
-                  {formatTrend(row.trendRicaviPerc)}
-                </td>
-                <td style={{ ...td, ...getTrendStyle(row.trendMarginePerc) }}>
-                  {formatTrend(row.trendMarginePerc)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          <div style={tableWrapStyle}>
+            <table style={table}>
+              <thead>
+                <tr>
+                  <th style={th}>PV</th>
+                  <th style={th}>Ricavi</th>
+                  <th style={th}>Costi fatture</th>
+                  <th style={th}>Costo personale</th>
+                  <th style={th}>Spese dirette</th>
+                  <th style={th}>Quota generali</th>
+                  <th style={th}>Costi totali</th>
+                  <th style={th}>Margine €</th>
+                  <th style={th}>Margine %</th>
+                  <th style={th}>Ore</th>
+                  <th style={th}>Produttività €/h</th>
+                  <th style={th}>Costo pers. %</th>
+                  <th style={th}>Stato</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <tr key={row.id}>
+                    <td style={td}>{row.nome}</td>
+                    <td style={td}>{formatEuro(row.ricavi)}</td>
+                    <td style={td}>{formatEuro(row.costiFattureImponibile)}</td>
+                    <td style={td}>{formatEuro(row.costoPersonale)}</td>
+                    <td style={td}>{formatEuro(row.speseManualiDirette)}</td>
+                    <td style={td}>{formatEuro(row.quotaGenerali)}</td>
+                    <td style={td}>{formatEuro(row.costiTotali)}</td>
+                    <td style={{ ...td, ...getMargineStyle(row.margine), fontWeight: 700 }}>
+                      {formatEuro(row.margine)}
+                    </td>
+                    <td style={td}>{formatPercent(row.marginePerc)}</td>
+                    <td style={td}>{formatNumber(row.ore)}</td>
+                    <td style={{ ...td, ...getProduttivitaStyle(row.produttivitaOraria) }}>
+                      {formatEuro(row.produttivitaOraria)}
+                    </td>
+                    <td style={{ ...td, ...getCostoPersonalePercStyle(row.costoPersonalePerc) }}>
+                      {formatPercent(row.costoPersonalePerc)}
+                    </td>
+                    <td style={td}>
+                      <span style={badgeStyle(getOverallStatus(row))}>
+                        {getOverallStatusLabel(row)}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+
+                <tr>
+                  <td style={{ ...td, fontWeight: 700 }}>Totale</td>
+                  <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.ricavi)}</td>
+                  <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.costiFattureImponibile)}</td>
+                  <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.costoPersonale)}</td>
+                  <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.speseManualiDirette)}</td>
+                  <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.quotaGenerali)}</td>
+                  <td style={{ ...td, fontWeight: 700 }}>{formatEuro(totals.costiTotali)}</td>
+                  <td style={{ ...td, ...getMargineStyle(totals.margine), fontWeight: 700 }}>
+                    {formatEuro(totals.margine)}
+                  </td>
+                  <td style={{ ...td, fontWeight: 700 }}>
+                    {formatPercent(overallMetrics.marginePerc)}
+                  </td>
+                  <td style={{ ...td, fontWeight: 700 }}>{formatNumber(totals.ore)}</td>
+                  <td
+                    style={{
+                      ...td,
+                      ...getProduttivitaStyle(overallMetrics.produttivitaMedia),
+                      fontWeight: 700,
+                    }}
+                  >
+                    {formatEuro(overallMetrics.produttivitaMedia)}
+                  </td>
+                  <td
+                    style={{
+                      ...td,
+                      ...getCostoPersonalePercStyle(overallMetrics.costoPersonalePerc),
+                      fontWeight: 700,
+                    }}
+                  >
+                    {formatPercent(overallMetrics.costoPersonalePerc)}
+                  </td>
+                  <td style={td}>
+                    <span
+                      style={badgeStyle(
+                        getOverallStatus({
+                          produttivitaOraria: overallMetrics.produttivitaMedia,
+                          margine: totals.margine,
+                          costoPersonalePerc: overallMetrics.costoPersonalePerc,
+                        })
+                      )}
+                    >
+                      {getOverallStatusLabel({
+                        produttivitaOraria: overallMetrics.produttivitaMedia,
+                        margine: totals.margine,
+                        costoPersonalePerc: overallMetrics.costoPersonalePerc,
+                      })}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: 32 }}>
+            <h2 style={sectionTitleStyle}>Trend mensile</h2>
+
+            <TrendLineChart data={trendChartData} />
+
+            <div style={tableWrapStyle}>
+              <table style={table}>
+                <thead>
+                  <tr>
+                    <th style={th}>Mese</th>
+                    <th style={th}>Ricavi</th>
+                    <th style={th}>Costi fatture</th>
+                    <th style={th}>Costo personale</th>
+                    <th style={th}>Spese dirette</th>
+                    <th style={th}>Quota generali</th>
+                    <th style={th}>Costi totali</th>
+                    <th style={th}>Margine €</th>
+                    <th style={th}>Margine %</th>
+                    <th style={th}>Ore</th>
+                    <th style={th}>Produttività €/h</th>
+                    <th style={th}>Trend ricavi</th>
+                    <th style={th}>Trend margine</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trendRows.map((row) => (
+                    <tr key={row.monthKey}>
+                      <td style={td}>{formatMonthLabel(row.monthKey)}</td>
+                      <td style={td}>{formatEuro(row.ricavi)}</td>
+                      <td style={td}>{formatEuro(row.costiFattureImponibile)}</td>
+                      <td style={td}>{formatEuro(row.costoPersonale)}</td>
+                      <td style={td}>{formatEuro(row.speseManualiDirette)}</td>
+                      <td style={td}>{formatEuro(row.quotaGenerali)}</td>
+                      <td style={td}>{formatEuro(row.costiTotali)}</td>
+                      <td style={{ ...td, ...getMargineStyle(row.margine), fontWeight: 700 }}>
+                        {formatEuro(row.margine)}
+                      </td>
+                      <td style={td}>{formatPercent(row.marginePerc)}</td>
+                      <td style={td}>{formatNumber(row.ore)}</td>
+                      <td style={{ ...td, ...getProduttivitaStyle(row.produttivitaOraria) }}>
+                        {formatEuro(row.produttivitaOraria)}
+                      </td>
+                      <td style={{ ...td, ...getTrendStyle(row.trendRicaviPerc) }}>
+                        {formatTrend(row.trendRicaviPerc)}
+                      </td>
+                      <td style={{ ...td, ...getTrendStyle(row.trendMarginePerc) }}>
+                        {formatTrend(row.trendMarginePerc)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </Layout>
+  )
+}
+
+function KpiCard({ title, value, color = '#111827' }) {
+  return (
+    <div style={kpiCardStyle}>
+      <div style={kpiTitleStyle}>{title}</div>
+      <div style={{ ...kpiValueStyle, color }}>{value}</div>
+    </div>
   )
 }
 
 function TrendLineChart({ data, width = 1000, height = 320 }) {
   if (!data || data.length === 0) {
     return (
-      <div style={{ padding: 16, border: '1px solid #ccc', background: '#fff', marginBottom: 24 }}>
+      <div style={emptyChartStyle}>
         Nessun dato disponibile
       </div>
     )
@@ -523,13 +622,7 @@ function TrendLineChart({ data, width = 1000, height = 320 }) {
     <div style={{ marginBottom: 24 }}>
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        style={{
-          width: '100%',
-          height: 'auto',
-          border: '1px solid #ccc',
-          background: '#fff',
-          display: 'block',
-        }}
+        style={chartSvgStyle}
       >
         {tickValues.map((tick, i) => {
           const y = getY(tick)
@@ -610,7 +703,7 @@ function TrendLineChart({ data, width = 1000, height = 320 }) {
         })}
       </svg>
 
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 8, fontSize: 13 }}>
+      <div style={legendStyle}>
         <span><strong style={{ color: '#2563eb' }}>■</strong> Ricavi</span>
         <span><strong style={{ color: '#dc2626' }}>■</strong> Costi totali</span>
         <span><strong style={{ color: '#16a34a' }}>■</strong> Margine</span>
@@ -806,6 +899,7 @@ function badgeStyle(status) {
       padding: '4px 8px',
       background: '#dff0d8',
       border: '1px solid #c3e6cb',
+      borderRadius: 8,
     }
   }
 
@@ -815,6 +909,7 @@ function badgeStyle(status) {
       padding: '4px 8px',
       background: '#fcf8e3',
       border: '1px solid #faebcc',
+      borderRadius: 8,
     }
   }
 
@@ -823,6 +918,7 @@ function badgeStyle(status) {
     padding: '4px 8px',
     background: '#f2dede',
     border: '1px solid #ebccd1',
+    borderRadius: 8,
   }
 }
 
@@ -887,22 +983,117 @@ const errorTextStyle = {
   color: '#b91c1c',
 }
 
+const loadingTextStyle = {
+  marginTop: 16,
+  color: '#374151',
+}
+
+const kpiGridStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+  gap: 12,
+  marginBottom: 20,
+}
+
+const kpiCardStyle = {
+  padding: 16,
+  borderRadius: 14,
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  boxShadow: '0 6px 20px rgba(0,0,0,0.04)',
+}
+
+const kpiTitleStyle = {
+  fontSize: 13,
+  color: '#6b7280',
+  marginBottom: 6,
+}
+
+const kpiValueStyle = {
+  fontSize: 20,
+  fontWeight: 700,
+}
+
+const alertBoxStyle = {
+  marginBottom: 20,
+  padding: 16,
+  borderRadius: 12,
+  background: '#fef2f2',
+  border: '1px solid #fecaca',
+}
+
+const alertTitleStyle = {
+  fontWeight: 700,
+  marginBottom: 8,
+  color: '#991b1b',
+}
+
+const alertListStyle = {
+  margin: 0,
+  paddingLeft: 20,
+  color: '#7f1d1d',
+}
+
+const sectionTitleStyle = {
+  marginTop: 8,
+  marginBottom: 12,
+  color: '#111827',
+}
+
+const tableWrapStyle = {
+  width: '100%',
+  overflowX: 'auto',
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: 16,
+  marginTop: 12,
+}
+
 const table = {
   borderCollapse: 'collapse',
   width: '100%',
-  marginTop: 24,
+  minWidth: 1400,
+  marginTop: 0,
 }
 
 const th = {
-  border: '1px solid #ccc',
-  padding: 8,
+  borderBottom: '1px solid #e5e7eb',
+  padding: 10,
   textAlign: 'left',
-  background: '#f5f5f5',
+  background: '#f9fafb',
   fontSize: 14,
+  color: '#111827',
+  whiteSpace: 'nowrap',
 }
 
 const td = {
-  border: '1px solid #ccc',
-  padding: 8,
+  borderBottom: '1px solid #f1f5f9',
+  padding: 10,
   fontSize: 14,
+  color: '#111827',
+}
+
+const emptyChartStyle = {
+  padding: 16,
+  border: '1px solid #ddd',
+  background: '#fff',
+  marginBottom: 24,
+  borderRadius: 12,
+}
+
+const chartSvgStyle = {
+  width: '100%',
+  height: 'auto',
+  border: '1px solid #ccc',
+  background: '#fff',
+  display: 'block',
+  borderRadius: 12,
+}
+
+const legendStyle = {
+  display: 'flex',
+  gap: 16,
+  flexWrap: 'wrap',
+  marginTop: 8,
+  fontSize: 13,
 }
