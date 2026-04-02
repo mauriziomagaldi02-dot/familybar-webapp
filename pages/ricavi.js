@@ -120,7 +120,7 @@ export default function Ricavi() {
       return
     }
 
-    if (payload.amount === null) {
+    if (payload.amount === null || Number.isNaN(payload.amount)) {
       setMessage('Inserisci l’importo')
       return
     }
@@ -146,41 +146,42 @@ export default function Ricavi() {
 
     setSaving(true)
 
-    if (editingId) {
-      const { data, error } = await supabase
-        .from('revenues')
-        .update(payload)
-        .eq('id', editingId)
-        .select()
-        .single()
+    try {
+      if (editingId) {
+        const { data, error } = await supabase
+          .from('revenues')
+          .update(payload)
+          .eq('id', editingId)
+          .select()
+          .single()
 
-      if (error) {
-        setMessage(error.message)
-        setSaving(false)
-        return
+        if (error) {
+          setMessage(error.message)
+          return
+        }
+
+        setAllRows((prev) => prev.map((row) => (row.id === editingId ? data : row)))
+        setMessage('Ricavo aggiornato.')
+      } else {
+        const { data, error } = await supabase
+          .from('revenues')
+          .insert(payload)
+          .select()
+          .single()
+
+        if (error) {
+          setMessage(error.message)
+          return
+        }
+
+        setAllRows((prev) => [data, ...prev])
+        setMessage('Ricavo inserito.')
       }
 
-      setAllRows((prev) => prev.map((row) => (row.id === editingId ? data : row)))
-      setMessage('Ricavo aggiornato.')
-    } else {
-      const { data, error } = await supabase
-        .from('revenues')
-        .insert(payload)
-        .select()
-        .single()
-
-      if (error) {
-        setMessage(error.message)
-        setSaving(false)
-        return
-      }
-
-      setAllRows((prev) => [data, ...prev])
-      setMessage('Ricavo inserito.')
+      resetForm()
+    } finally {
+      setSaving(false)
     }
-
-    resetForm()
-    setSaving(false)
   }
 
   function handleEdit(row) {
@@ -199,20 +200,32 @@ export default function Ricavi() {
     if (!conferma) return
 
     setDeletingId(id)
+    setMessage('')
 
-    const { error } = await supabase.from('revenues').delete().eq('id', id)
+    try {
+      const { data, error } = await supabase
+        .from('revenues')
+        .delete()
+        .eq('id', id)
+        .select('id')
 
-    if (error) {
-      setMessage(error.message)
+      if (error) {
+        setMessage(error.message)
+        return
+      }
+
+      if (!data || data.length === 0) {
+        setMessage('Il ricavo non è stato cancellato dal database. Controlla le policy Supabase.')
+        return
+      }
+
+      if (editingId === id) resetForm()
+
+      await loadData()
+      setMessage('Ricavo cancellato.')
+    } finally {
       setDeletingId(null)
-      return
     }
-
-    if (editingId === id) resetForm()
-
-    setAllRows((prev) => prev.filter((row) => row.id !== id))
-    setMessage('Ricavo cancellato.')
-    setDeletingId(null)
   }
 
   function resetForm() {
@@ -360,7 +373,7 @@ export default function Ricavi() {
                           type="button"
                           onClick={() => handleEdit(row)}
                           style={smallButtonStyle}
-                          disabled={deletingId === row.id}
+                          disabled={deletingId === row.id || saving}
                         >
                           Modifica
                         </button>
@@ -369,7 +382,7 @@ export default function Ricavi() {
                           type="button"
                           onClick={() => handleDelete(row.id)}
                           style={deletingId === row.id ? disabledDangerButtonStyle : smallDangerButtonStyle}
-                          disabled={deletingId === row.id}
+                          disabled={deletingId === row.id || saving}
                         >
                           {deletingId === row.id ? 'Cancellazione...' : 'Cancella'}
                         </button>
