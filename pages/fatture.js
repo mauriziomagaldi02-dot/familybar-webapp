@@ -34,7 +34,6 @@ export default function Fatture() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
-  const [updatingCellId, setUpdatingCellId] = useState(null)
   const [deletingAll, setDeletingAll] = useState(false)
 
   useEffect(() => {
@@ -59,43 +58,63 @@ export default function Fatture() {
     await supabase.auth.signOut()
   }
 
+  async function fetchAllRows(tableName, orderColumn = 'id', ascending = true) {
+    const pageChunk = 1000
+    let from = 0
+    let finished = false
+    let result = []
+
+    while (!finished) {
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .order(orderColumn, { ascending })
+        .range(from, from + pageChunk - 1)
+
+      if (error) throw error
+
+      const rows = data || []
+      result = [...result, ...rows]
+
+      if (rows.length < pageChunk) {
+        finished = true
+      } else {
+        from += pageChunk
+      }
+    }
+
+    return result
+  }
+
   async function loadData() {
     setLoading(true)
     setMessage('')
 
-    const [
-      { data: invoicesData, error: invoicesError },
-      { data: suppliersData, error: suppliersError },
-      { data: pvData, error: pvError },
-      { data: categoriesData, error: categoriesError },
-      { data: mappingsData, error: mappingsError },
-    ] = await Promise.all([
-      supabase.from('invoices').select('*').order('invoice_date', { ascending: false }),
-      supabase.from('suppliers').select('*').order('name', { ascending: true }),
-      supabase.from('points_of_sale').select('*').order('name', { ascending: true }),
-      supabase.from('categories').select('*').order('name', { ascending: true }),
-      supabase.from('supplier_mappings').select('*'),
-    ])
+    try {
+      const [
+        invoicesData,
+        suppliersData,
+        pvData,
+        categoriesData,
+        mappingsData,
+      ] = await Promise.all([
+        fetchAllRows('invoices', 'invoice_date', false),
+        fetchAllRows('suppliers', 'name', true),
+        fetchAllRows('points_of_sale', 'name', true),
+        fetchAllRows('categories', 'name', true),
+        fetchAllRows('supplier_mappings', 'id', true),
+      ])
 
-    if (invoicesError || suppliersError || pvError || categoriesError || mappingsError) {
-      setMessage(
-        invoicesError?.message ||
-          suppliersError?.message ||
-          pvError?.message ||
-          categoriesError?.message ||
-          mappingsError?.message ||
-          'Errore caricamento dati'
-      )
+      setAllRows(invoicesData || [])
+      setSuppliers(suppliersData || [])
+      setPointsOfSale(pvData || [])
+      setCategories(categoriesData || [])
+      setMappings(mappingsData || [])
+    } catch (error) {
+      setMessage(error.message || 'Errore caricamento dati')
+    } finally {
       setLoading(false)
-      return
     }
-
-    setAllRows(invoicesData || [])
-    setSuppliers(suppliersData || [])
-    setPointsOfSale(pvData || [])
-    setCategories(categoriesData || [])
-    setMappings(mappingsData || [])
-    setLoading(false)
   }
 
   const mappingsBySupplier = useMemo(() => {
@@ -256,41 +275,38 @@ export default function Fatture() {
 
     setSaving(true)
 
-    if (editingId) {
-      const { data, error } = await supabase
-        .from('invoices')
-        .update(payload)
-        .eq('id', editingId)
-        .select()
-        .single()
+    try {
+      if (editingId) {
+        const { data, error } = await supabase
+          .from('invoices')
+          .update(payload)
+          .eq('id', editingId)
+          .select()
+          .single()
 
-      if (error) {
-        setMessage(error.message)
-        setSaving(false)
-        return
+        if (error) throw error
+
+        setAllRows((prev) => prev.map((row) => (row.id === editingId ? data : row)))
+        setMessage('Fattura aggiornata.')
+      } else {
+        const { data, error } = await supabase
+          .from('invoices')
+          .insert(payload)
+          .select()
+          .single()
+
+        if (error) throw error
+
+        setAllRows((prev) => [data, ...prev])
+        setMessage('Fattura inserita.')
       }
 
-      setAllRows((prev) => prev.map((row) => (row.id === editingId ? data : row)))
-      setMessage('Fattura aggiornata.')
-    } else {
-      const { data, error } = await supabase
-        .from('invoices')
-        .insert(payload)
-        .select()
-        .single()
-
-      if (error) {
-        setMessage(error.message)
-        setSaving(false)
-        return
-      }
-
-      setAllRows((prev) => [data, ...prev])
-      setMessage('Fattura inserita.')
+      resetForm()
+    } catch (error) {
+      setMessage(error.message || 'Errore salvataggio fattura')
+    } finally {
+      setSaving(false)
     }
-
-    resetForm()
-    setSaving(false)
   }
 
   function handleEdit(row) {
@@ -315,22 +331,22 @@ export default function Fatture() {
     setDeletingId(id)
     setMessage('')
 
-    const { error } = await supabase.from('invoices').delete().eq('id', id)
+    try {
+      const { error } = await supabase.from('invoices').delete().eq('id', id)
+      if (error) throw error
 
-    if (error) {
-      setMessage(error.message)
+      setAllRows((prev) => prev.filter((row) => row.id !== id))
+
+      if (editingId === id) {
+        resetForm()
+      }
+
+      setMessage('Fattura cancellata.')
+    } catch (error) {
+      setMessage(error.message || 'Errore cancellazione fattura')
+    } finally {
       setDeletingId(null)
-      return
     }
-
-    setAllRows((prev) => prev.filter((row) => row.id !== id))
-
-    if (editingId === id) {
-      resetForm()
-    }
-
-    setMessage('Fattura cancellata.')
-    setDeletingId(null)
   }
 
   async function handleDeleteAllInvoices() {
@@ -356,80 +372,23 @@ export default function Fatture() {
     setDeletingAll(true)
     setMessage('')
 
-    const { error } = await supabase.from('invoices').delete().not('id', 'is', null)
+    try {
+      const { error } = await supabase
+        .from('invoices')
+        .delete()
+        .not('id', 'is', null)
 
-    if (error) {
-      setMessage(error.message)
+      if (error) throw error
+
+      setAllRows([])
+      resetForm()
+      setCurrentPage(1)
+      setMessage('Tutte le fatture sono state cancellate.')
+    } catch (error) {
+      setMessage(error.message || 'Errore cancellazione totale')
+    } finally {
       setDeletingAll(false)
-      return
     }
-
-    setAllRows([])
-    resetForm()
-    setCurrentPage(1)
-    setMessage('Tutte le fatture sono state cancellate.')
-    setDeletingAll(false)
-  }
-
-  async function updateInvoiceInline(invoiceId, updates, successMessage = 'Fattura aggiornata.') {
-    setUpdatingCellId(invoiceId)
-    setMessage('')
-
-    const { data, error } = await supabase
-      .from('invoices')
-      .update(updates)
-      .eq('id', invoiceId)
-      .select()
-      .single()
-
-    if (error) {
-      setMessage(error.message)
-      setUpdatingCellId(null)
-      return
-    }
-
-    setAllRows((prev) => prev.map((row) => (row.id === invoiceId ? data : row)))
-    setMessage(successMessage)
-    setUpdatingCellId(null)
-  }
-
-  async function handleInlinePvChange(invoiceId, pointOfSaleId, row) {
-    if (row.is_general) {
-      setMessage('Togli prima il flag "Generale" per assegnare un punto vendita.')
-      return
-    }
-
-    const value = pointOfSaleId || null
-
-    await updateInvoiceInline(invoiceId, { point_of_sale_id: value }, 'Punto vendita aggiornato.')
-  }
-
-  async function handleInlineCategoryChange(invoiceId, categoryId) {
-    const value = categoryId || null
-
-    await updateInvoiceInline(invoiceId, { category_id: value }, 'Categoria aggiornata.')
-  }
-
-  async function handleInlineGeneralChange(invoiceId, checked) {
-    if (checked) {
-      await updateInvoiceInline(
-        invoiceId,
-        {
-          is_general: true,
-          point_of_sale_id: null,
-        },
-        'Fattura impostata come costo generale.'
-      )
-      return
-    }
-
-    await updateInvoiceInline(
-      invoiceId,
-      {
-        is_general: false,
-      },
-      'Flag costo generale rimosso.'
-    )
   }
 
   function resetForm() {
@@ -694,7 +653,11 @@ export default function Fatture() {
                         <button
                           type="button"
                           onClick={() => handleDelete(row.id)}
-                          style={deletingId === row.id ? disabledDangerButtonStyle : smallDangerButtonStyle}
+                          style={
+                            deletingId === row.id
+                              ? disabledDangerButtonStyle
+                              : smallDangerButtonStyle
+                          }
                           disabled={deletingId === row.id || deletingAll}
                         >
                           {deletingId === row.id ? 'Cancellazione...' : 'Cancella'}
