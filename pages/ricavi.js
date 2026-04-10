@@ -88,14 +88,13 @@ export default function Ricavi() {
     }
 
     const [{ data: rev, error: revError }, { data: pv, error: pvError }] =
-      await Promise.all([
-        revenuesQuery,
-        supabase
-          .from('points_of_sale')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('name'),
-      ])
+  await Promise.all([
+    revenuesQuery,
+    supabase
+      .from('points_of_sale')
+      .select('*')
+      .order('name'),
+  ])
 
     if (revError || pvError) {
       setMessage(revError?.message || pvError?.message || 'Errore caricamento dati')
