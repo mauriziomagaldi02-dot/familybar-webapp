@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { supabase } from '../lib/supabaseClient'
 import Layout from '../components/Layout'
 
+const INSERT_CHUNK_SIZE = 200
+
 export default function ImportXml() {
   const [user, setUser] = useState(null)
   const [suppliers, setSuppliers] = useState([])
@@ -77,8 +79,12 @@ export default function ImportXml() {
       { data: suppliersData, error: suppliersError },
       { data: mappingsData, error: mappingsError },
     ] = await Promise.all([
-      supabase.from('suppliers').select('*').order('name', { ascending: true }),
-      supabase.from('supplier_mappings').select('*'),
+      fetchAllRows(() =>
+        supabase.from('suppliers').select('*').order('name', { ascending: true })
+      ),
+      fetchAllRows(() =>
+        supabase.from('supplier_mappings').select('*').order('id', { ascending: true })
+      ),
     ])
 
     if (suppliersError || mappingsError) {
@@ -302,15 +308,28 @@ export default function ImportXml() {
       }
 
       if (invoicesToInsert.length > 0) {
-        for (const invoice of invoicesToInsert) {
-          const { error: insertInvoiceError } = await supabase
-            .from('invoices')
-            .insert(invoice)
+        for (let i = 0; i < invoicesToInsert.length; i += INSERT_CHUNK_SIZE) {
+          const chunk = invoicesToInsert.slice(i, i + INSERT_CHUNK_SIZE)
 
-          if (insertInvoiceError) {
-            skipped += 1
+          const { data: insertedInvoices, error: insertInvoicesError } = await supabase
+            .from('invoices')
+            .insert(chunk)
+            .select('id')
+
+          if (insertInvoicesError) {
+            for (const invoice of chunk) {
+              const { error: singleInsertError } = await supabase
+                .from('invoices')
+                .insert(invoice)
+
+              if (singleInsertError) {
+                skipped += 1
+              } else {
+                inserted += 1
+              }
+            }
           } else {
-            inserted += 1
+            inserted += insertedInvoices?.length || chunk.length
           }
         }
       }
@@ -426,6 +445,30 @@ export default function ImportXml() {
   )
 }
 
+async function fetchAllRows(buildQuery, pageSize = 1000) {
+  let allRows = []
+  let from = 0
+
+  while (true) {
+    const { data, error } = await buildQuery().range(from, from + pageSize - 1)
+
+    if (error) {
+      return { data: null, error }
+    }
+
+    const batch = data || []
+    allRows = allRows.concat(batch)
+
+    if (batch.length < pageSize) {
+      break
+    }
+
+    from += pageSize
+  }
+
+  return { data: allRows, error: null }
+}
+
 function parseFatturaXml(xmlText, filename) {
   const parser = new DOMParser()
   const xml = parser.parseFromString(xmlText, 'application/xml')
@@ -436,28 +479,30 @@ function parseFatturaXml(xmlText, filename) {
   }
 
   const supplierName =
-    getNodeText(xml, 'CedentePrestatore Denominazione') ||
+    getFirstTextByLocalName(xml, 'Denominazione', ['CedentePrestatore']) ||
     joinParts(
-      getNodeText(xml, 'CedentePrestatore Nome'),
-      getNodeText(xml, 'CedentePrestatore Cognome')
+      getFirstTextByLocalName(xml, 'Nome', ['CedentePrestatore']),
+      getFirstTextByLocalName(xml, 'Cognome', ['CedentePrestatore'])
     )
 
-  const vatCountry = getNodeText(xml, 'CedentePrestatore IdFiscaleIVA IdPaese')
-  const vatCode = getNodeText(xml, 'CedentePrestatore IdFiscaleIVA IdCodice')
-  const taxCode = getNodeText(xml, 'CedentePrestatore CodiceFiscale')
+  const vatCountry = getFirstTextByLocalName(xml, 'IdPaese', ['CedentePrestatore'])
+  const vatCode = getFirstTextByLocalName(xml, 'IdCodice', ['CedentePrestatore'])
+  const taxCode = getFirstTextByLocalName(xml, 'CodiceFiscale', ['CedentePrestatore'])
 
-  const invoiceNumber = getNodeText(xml, 'DatiGeneraliDocumento Numero')
-  const invoiceDate = getNodeText(xml, 'DatiGeneraliDocumento Data')
+  const invoiceNumber = getFirstTextByLocalName(xml, 'Numero', ['DatiGeneraliDocumento'])
+  const invoiceDate = getFirstTextByLocalName(xml, 'Data', ['DatiGeneraliDocumento'])
 
-  const imponibili = getAllNodeTexts(xml, 'DatiRiepilogo ImponibileImporto')
+  const imponibili = getTextsByLocalName(xml, 'ImponibileImporto')
     .map((v) => Number(sanitizeNumber(v)))
     .filter((v) => !Number.isNaN(v))
 
-  const lineTotals = getAllNodeTexts(xml, 'DettaglioLinee PrezzoTotale')
+  const lineTotals = getTextsByLocalName(xml, 'PrezzoTotale')
     .map((v) => Number(sanitizeNumber(v)))
     .filter((v) => !Number.isNaN(v))
 
-  const totalDocument = Number(sanitizeNumber(getNodeText(xml, 'DatiGeneraliDocumento ImportoTotaleDocumento') || ''))
+  const totalDocument = Number(
+    sanitizeNumber(getFirstTextByLocalName(xml, 'ImportoTotaleDocumento') || '')
+  )
 
   let amount = ''
 
@@ -487,42 +532,30 @@ function parseFatturaXml(xmlText, filename) {
   }
 }
 
-function getNodeText(xml, path) {
-  const parts = path.split(' ')
-  let nodes = [xml.documentElement]
-
-  for (const part of parts) {
-    const nextNodes = []
-    for (const node of nodes) {
-      const found = Array.from(node.getElementsByTagName('*')).filter(
-        (el) => stripPrefix(el.tagName) === part
-      )
-      for (const item of found) nextNodes.push(item)
-    }
-    if (nextNodes.length === 0) return ''
-    nodes = nextNodes
-  }
-
-  return nodes[0]?.textContent?.trim() || ''
+function getTextsByLocalName(xml, localName) {
+  return Array.from(xml.getElementsByTagName('*'))
+    .filter((el) => stripPrefix(el.tagName) === localName)
+    .map((el) => (el.textContent || '').trim())
+    .filter(Boolean)
 }
 
-function getAllNodeTexts(xml, path) {
-  const parts = path.split(' ')
-  let nodes = [xml.documentElement]
+function getFirstTextByLocalName(xml, localName, ancestorNames = []) {
+  const matches = Array.from(xml.getElementsByTagName('*')).filter((el) => {
+    if (stripPrefix(el.tagName) !== localName) return false
 
-  for (const part of parts) {
-    const nextNodes = []
-    for (const node of nodes) {
-      const found = Array.from(node.getElementsByTagName('*')).filter(
-        (el) => stripPrefix(el.tagName) === part
-      )
-      for (const item of found) nextNodes.push(item)
+    if (!ancestorNames.length) return true
+
+    let current = el.parentElement
+    while (current) {
+      if (ancestorNames.includes(stripPrefix(current.tagName))) {
+        return true
+      }
+      current = current.parentElement
     }
-    if (nextNodes.length === 0) return []
-    nodes = nextNodes
-  }
+    return false
+  })
 
-  return nodes.map((n) => n.textContent?.trim() || '').filter(Boolean)
+  return matches[0]?.textContent?.trim() || ''
 }
 
 function stripPrefix(tagName) {
