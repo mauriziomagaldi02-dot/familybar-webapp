@@ -60,53 +60,33 @@ export default function Fatture() {
   }
 
   async function loadData() {
-  setLoading(true)
-  setMessage('')
+    setLoading(true)
+    setMessage('')
 
-  const [
-    { data: invoicesData, error: invoicesError },
-    { data: suppliersData, error: suppliersError },
-    { data: pvData, error: pvError },
-    { data: categoriesData, error: categoriesError },
-    { data: mappingsData, error: mappingsError },
-  ] = await Promise.all([
-    fetchAllRows(() =>
-      supabase.from('invoices').select('*').order('invoice_date', { ascending: false })
-    ),
-    fetchAllRows(() =>
-      supabase.from('suppliers').select('*').order('name', { ascending: true })
-    ),
-    fetchAllRows(() =>
-      supabase.from('points_of_sale').select('*').order('name', { ascending: true })
-    ),
-    fetchAllRows(() =>
-      supabase.from('categories').select('*').order('name', { ascending: true })
-    ),
-    fetchAllRows(() =>
-      supabase.from('supplier_mappings').select('*').order('id', { ascending: true })
-    ),
-  ])
+    const [
+      { data: invoicesData, error: invoicesError },
+      { data: suppliersData, error: suppliersError },
+      { data: pvData, error: pvError },
+      { data: categoriesData, error: categoriesError },
+      { data: mappingsData, error: mappingsError },
+    ] = await Promise.all([
+      supabase.from('invoices').select('*').order('invoice_date', { ascending: false }),
+      supabase.from('suppliers').select('*').order('name', { ascending: true }),
+      supabase.from('points_of_sale').select('*').order('name', { ascending: true }),
+      supabase.from('categories').select('*').order('name', { ascending: true }),
+      supabase.from('supplier_mappings').select('*'),
+    ])
 
-  if (invoicesError || suppliersError || pvError || categoriesError || mappingsError) {
-    setMessage(
-      invoicesError?.message ||
-        suppliersError?.message ||
-        pvError?.message ||
-        categoriesError?.message ||
-        mappingsError?.message ||
-        'Errore caricamento dati'
-    )
-    setLoading(false)
-    return
-  }
-
-  setAllRows(invoicesData || [])
-  setSuppliers(suppliersData || [])
-  setPointsOfSale(pvData || [])
-  setCategories(categoriesData || [])
-  setMappings(mappingsData || [])
-  setLoading(false)
-}
+    if (invoicesError || suppliersError || pvError || categoriesError || mappingsError) {
+      setMessage(
+        invoicesError?.message ||
+          suppliersError?.message ||
+          pvError?.message ||
+          categoriesError?.message ||
+          mappingsError?.message ||
+          'Errore caricamento dati'
+      )
+      setLoading(false)
       return
     }
 
@@ -263,7 +243,8 @@ export default function Fatture() {
 
       return (
         String(row.supplier_id || '') === String(payload.supplier_id || '') &&
-        String(row.invoice_number || '').trim().toLowerCase() === String(payload.invoice_number || '').trim().toLowerCase() &&
+        String(row.invoice_number || '').trim().toLowerCase() ===
+          String(payload.invoice_number || '').trim().toLowerCase() &&
         String(row.invoice_date || '') === String(payload.invoice_date || '')
       )
     })
@@ -334,10 +315,7 @@ export default function Fatture() {
     setDeletingId(id)
     setMessage('')
 
-    const { error } = await supabase
-      .from('invoices')
-      .delete()
-      .eq('id', id)
+    const { error } = await supabase.from('invoices').delete().eq('id', id)
 
     if (error) {
       setMessage(error.message)
@@ -378,10 +356,7 @@ export default function Fatture() {
     setDeletingAll(true)
     setMessage('')
 
-    const { error } = await supabase
-      .from('invoices')
-      .delete()
-      .not('id', 'is', null)
+    const { error } = await supabase.from('invoices').delete().not('id', 'is', null)
 
     if (error) {
       setMessage(error.message)
@@ -426,21 +401,13 @@ export default function Fatture() {
 
     const value = pointOfSaleId || null
 
-    await updateInvoiceInline(
-      invoiceId,
-      { point_of_sale_id: value },
-      'Punto vendita aggiornato.'
-    )
+    await updateInvoiceInline(invoiceId, { point_of_sale_id: value }, 'Punto vendita aggiornato.')
   }
 
   async function handleInlineCategoryChange(invoiceId, categoryId) {
     const value = categoryId || null
 
-    await updateInvoiceInline(
-      invoiceId,
-      { category_id: value },
-      'Categoria aggiornata.'
-    )
+    await updateInvoiceInline(invoiceId, { category_id: value }, 'Categoria aggiornata.')
   }
 
   async function handleInlineGeneralChange(invoiceId, checked) {
