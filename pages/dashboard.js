@@ -52,43 +52,53 @@ export default function Dashboard() {
   }
 
   async function loadData() {
-    setLoading(true)
-    setMessage('')
+  setLoading(true)
+  setMessage('')
 
-    const [
-      { data: pvData, error: pvError },
-      { data: revenuesData, error: revError },
-      { data: invoicesData, error: invError },
-      { data: staffData, error: staffError },
-      { data: manualCostsData, error: manualError },
-    ] = await Promise.all([
-      supabase.from('points_of_sale').select('*').order('name', { ascending: true }),
-      supabase.from('revenues').select('*'),
-      supabase.from('invoices').select('*'),
-      supabase.from('staff_costs').select('*'),
-      supabase.from('manual_costs').select('*'),
-    ])
+  const [
+    { data: pvData, error: pvError },
+    { data: revenuesData, error: revError },
+    { data: invoicesData, error: invError },
+    { data: staffData, error: staffError },
+    { data: manualCostsData, error: manualError },
+  ] = await Promise.all([
+    fetchAllRows(() =>
+      supabase.from('points_of_sale').select('*').order('name', { ascending: true })
+    ),
+    fetchAllRows(() =>
+      supabase.from('revenues').select('*').order('date', { ascending: false })
+    ),
+    fetchAllRows(() =>
+      supabase.from('invoices').select('*').order('invoice_date', { ascending: false })
+    ),
+    fetchAllRows(() =>
+      supabase.from('staff_costs').select('*').order('period_month', { ascending: false })
+    ),
+    fetchAllRows(() =>
+      supabase.from('manual_costs').select('*').order('cost_date', { ascending: false })
+    ),
+  ])
 
-    const err =
-      pvError?.message ||
-      revError?.message ||
-      invError?.message ||
-      staffError?.message ||
-      manualError?.message
+  const err =
+    pvError?.message ||
+    revError?.message ||
+    invError?.message ||
+    staffError?.message ||
+    manualError?.message
 
-    if (err) {
-      setMessage(err)
-      setLoading(false)
-      return
-    }
-
-    setPointsOfSale(pvData || [])
-    setRevenues(revenuesData || [])
-    setInvoices(invoicesData || [])
-    setStaffCosts(staffData || [])
-    setManualCosts(manualCostsData || [])
+  if (err) {
+    setMessage(err)
     setLoading(false)
+    return
   }
+
+  setPointsOfSale(pvData || [])
+  setRevenues(revenuesData || [])
+  setInvoices(invoicesData || [])
+  setStaffCosts(staffData || [])
+  setManualCosts(manualCostsData || [])
+  setLoading(false)
+}
 
   function buildDashboardRows() {
   const filteredRevenues = (revenues || []).filter((r) =>
