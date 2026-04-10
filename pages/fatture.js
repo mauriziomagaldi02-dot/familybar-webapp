@@ -60,33 +60,53 @@ export default function Fatture() {
   }
 
   async function loadData() {
-    setLoading(true)
-    setMessage('')
+  setLoading(true)
+  setMessage('')
 
-    const [
-      { data: invoicesData, error: invoicesError },
-      { data: suppliersData, error: suppliersError },
-      { data: pvData, error: pvError },
-      { data: categoriesData, error: categoriesError },
-      { data: mappingsData, error: mappingsError },
-    ] = await Promise.all([
-      supabase.from('invoices').select('*').order('invoice_date', { ascending: false }),
-      supabase.from('suppliers').select('*').order('name', { ascending: true }),
-      supabase.from('points_of_sale').select('*').order('name', { ascending: true }),
-      supabase.from('categories').select('*').order('name', { ascending: true }),
-      supabase.from('supplier_mappings').select('*'),
-    ])
+  const [
+    { data: invoicesData, error: invoicesError },
+    { data: suppliersData, error: suppliersError },
+    { data: pvData, error: pvError },
+    { data: categoriesData, error: categoriesError },
+    { data: mappingsData, error: mappingsError },
+  ] = await Promise.all([
+    fetchAllRows(() =>
+      supabase.from('invoices').select('*').order('invoice_date', { ascending: false })
+    ),
+    fetchAllRows(() =>
+      supabase.from('suppliers').select('*').order('name', { ascending: true })
+    ),
+    fetchAllRows(() =>
+      supabase.from('points_of_sale').select('*').order('name', { ascending: true })
+    ),
+    fetchAllRows(() =>
+      supabase.from('categories').select('*').order('name', { ascending: true })
+    ),
+    fetchAllRows(() =>
+      supabase.from('supplier_mappings').select('*').order('id', { ascending: true })
+    ),
+  ])
 
-    if (invoicesError || suppliersError || pvError || categoriesError || mappingsError) {
-      setMessage(
-        invoicesError?.message ||
-          suppliersError?.message ||
-          pvError?.message ||
-          categoriesError?.message ||
-          mappingsError?.message ||
-          'Errore caricamento dati'
-      )
-      setLoading(false)
+  if (invoicesError || suppliersError || pvError || categoriesError || mappingsError) {
+    setMessage(
+      invoicesError?.message ||
+        suppliersError?.message ||
+        pvError?.message ||
+        categoriesError?.message ||
+        mappingsError?.message ||
+        'Errore caricamento dati'
+    )
+    setLoading(false)
+    return
+  }
+
+  setAllRows(invoicesData || [])
+  setSuppliers(suppliersData || [])
+  setPointsOfSale(pvData || [])
+  setCategories(categoriesData || [])
+  setMappings(mappingsData || [])
+  setLoading(false)
+}
       return
     }
 
