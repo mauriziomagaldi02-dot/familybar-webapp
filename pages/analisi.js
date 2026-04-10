@@ -52,41 +52,68 @@ export default function Analisi() {
   }
 
   async function loadData() {
-    setLoading(true)
-    setMessage('')
+  setLoading(true)
+  setMessage('')
 
-    const [
-      { data: invoices, error: invoicesError },
-      { data: suppliers, error: suppliersError },
-      { data: pointsOfSale, error: pointsOfSaleError },
-      { data: categories, error: categoriesError },
-      { data: revenues, error: revenuesError },
-      { data: staffCosts, error: staffCostsError },
-      { data: manualCosts, error: manualCostsError },
-    ] = await Promise.all([
-      supabase.from('invoices').select('*'),
-      supabase.from('suppliers').select('*').order('name', { ascending: true }),
-      supabase.from('points_of_sale').select('*').order('name', { ascending: true }),
-      supabase.from('categories').select('*').order('name', { ascending: true }),
-      supabase.from('revenues').select('*'),
-      supabase.from('staff_costs').select('*'),
-      supabase.from('manual_costs').select('*'),
-    ])
+  const [
+    { data: invoices, error: invoicesError },
+    { data: suppliers, error: suppliersError },
+    { data: pointsOfSale, error: pointsOfSaleError },
+    { data: categories, error: categoriesError },
+    { data: revenues, error: revenuesError },
+    { data: staffCosts, error: staffCostsError },
+    { data: manualCosts, error: manualCostsError },
+  ] = await Promise.all([
+    fetchAllRows(() =>
+      supabase.from('invoices').select('*').order('invoice_date', { ascending: false })
+    ),
+    fetchAllRows(() =>
+      supabase.from('suppliers').select('*').order('name', { ascending: true })
+    ),
+    fetchAllRows(() =>
+      supabase.from('points_of_sale').select('*').order('name', { ascending: true })
+    ),
+    fetchAllRows(() =>
+      supabase.from('categories').select('*').order('name', { ascending: true })
+    ),
+    fetchAllRows(() =>
+      supabase.from('revenues').select('*').order('date', { ascending: false })
+    ),
+    fetchAllRows(() =>
+      supabase.from('staff_costs').select('*').order('period_month', { ascending: false })
+    ),
+    fetchAllRows(() =>
+      supabase.from('manual_costs').select('*').order('cost_date', { ascending: false })
+    ),
+  ])
 
-    const err =
-      invoicesError?.message ||
-      suppliersError?.message ||
-      pointsOfSaleError?.message ||
-      categoriesError?.message ||
-      revenuesError?.message ||
-      staffCostsError?.message ||
-      manualCostsError?.message
+  const err =
+    invoicesError?.message ||
+    suppliersError?.message ||
+    pointsOfSaleError?.message ||
+    categoriesError?.message ||
+    revenuesError?.message ||
+    staffCostsError?.message ||
+    manualCostsError?.message
 
-    if (err) {
-      setMessage(err)
-      setLoading(false)
-      return
-    }
+  if (err) {
+    setMessage(err)
+    setLoading(false)
+    return
+  }
+
+  setData({
+    invoices: invoices || [],
+    suppliers: suppliers || [],
+    pointsOfSale: pointsOfSale || [],
+    categories: categories || [],
+    revenues: revenues || [],
+    staffCosts: staffCosts || [],
+    manualCosts: manualCosts || [],
+  })
+
+  setLoading(false)
+}
 
     setData({
       invoices: invoices || [],
