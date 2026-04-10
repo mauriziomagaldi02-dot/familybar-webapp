@@ -27,7 +27,9 @@ export default function Analisi() {
   const [paretoPage, setParetoPage] = useState(1)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user || null))
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user || null)
+    })
 
     const {
       data: { subscription },
@@ -39,7 +41,9 @@ export default function Analisi() {
   }, [])
 
   useEffect(() => {
-    if (user) loadData()
+    if (user) {
+      loadData()
+    }
   }, [user])
 
   useEffect(() => {
@@ -52,68 +56,41 @@ export default function Analisi() {
   }
 
   async function loadData() {
-  setLoading(true)
-  setMessage('')
+    setLoading(true)
+    setMessage('')
 
-  const [
-    { data: invoices, error: invoicesError },
-    { data: suppliers, error: suppliersError },
-    { data: pointsOfSale, error: pointsOfSaleError },
-    { data: categories, error: categoriesError },
-    { data: revenues, error: revenuesError },
-    { data: staffCosts, error: staffCostsError },
-    { data: manualCosts, error: manualCostsError },
-  ] = await Promise.all([
-    fetchAllRows(() =>
-      supabase.from('invoices').select('*').order('invoice_date', { ascending: false })
-    ),
-    fetchAllRows(() =>
-      supabase.from('suppliers').select('*').order('name', { ascending: true })
-    ),
-    fetchAllRows(() =>
-      supabase.from('points_of_sale').select('*').order('name', { ascending: true })
-    ),
-    fetchAllRows(() =>
-      supabase.from('categories').select('*').order('name', { ascending: true })
-    ),
-    fetchAllRows(() =>
-      supabase.from('revenues').select('*').order('date', { ascending: false })
-    ),
-    fetchAllRows(() =>
-      supabase.from('staff_costs').select('*').order('period_month', { ascending: false })
-    ),
-    fetchAllRows(() =>
-      supabase.from('manual_costs').select('*').order('cost_date', { ascending: false })
-    ),
-  ])
+    const [
+      { data: invoices, error: invoicesError },
+      { data: suppliers, error: suppliersError },
+      { data: pointsOfSale, error: pointsOfSaleError },
+      { data: categories, error: categoriesError },
+      { data: revenues, error: revenuesError },
+      { data: staffCosts, error: staffCostsError },
+      { data: manualCosts, error: manualCostsError },
+    ] = await Promise.all([
+      supabase.from('invoices').select('*'),
+      supabase.from('suppliers').select('*').order('name', { ascending: true }),
+      supabase.from('points_of_sale').select('*').order('name', { ascending: true }),
+      supabase.from('categories').select('*').order('name', { ascending: true }),
+      supabase.from('revenues').select('*'),
+      supabase.from('staff_costs').select('*'),
+      supabase.from('manual_costs').select('*'),
+    ])
 
-  const err =
-    invoicesError?.message ||
-    suppliersError?.message ||
-    pointsOfSaleError?.message ||
-    categoriesError?.message ||
-    revenuesError?.message ||
-    staffCostsError?.message ||
-    manualCostsError?.message
+    const err =
+      invoicesError?.message ||
+      suppliersError?.message ||
+      pointsOfSaleError?.message ||
+      categoriesError?.message ||
+      revenuesError?.message ||
+      staffCostsError?.message ||
+      manualCostsError?.message
 
-  if (err) {
-    setMessage(err)
-    setLoading(false)
-    return
-  }
-
-  setData({
-    invoices: invoices || [],
-    suppliers: suppliers || [],
-    pointsOfSale: pointsOfSale || [],
-    categories: categories || [],
-    revenues: revenues || [],
-    staffCosts: staffCosts || [],
-    manualCosts: manualCosts || [],
-  })
-
-  setLoading(false)
-}
+    if (err) {
+      setMessage(err)
+      setLoading(false)
+      return
+    }
 
     setData({
       invoices: invoices || [],
@@ -145,9 +122,10 @@ export default function Analisi() {
 
   const filteredInvoices = useMemo(() => {
     return (data.invoices || []).filter((row) => {
-      const matchPv = selectedPv ? String(row.point_of_sale_id) === String(selectedPv) : true
+      const matchPv = selectedPv ? String(row.point_of_sale_id || '') === String(selectedPv) : true
       const matchMonth = dateRange
-        ? row.invoice_date >= dateRange.startDate && row.invoice_date < dateRange.endDate
+        ? String(row.invoice_date || '') >= dateRange.startDate &&
+          String(row.invoice_date || '') < dateRange.endDate
         : true
 
       return matchPv && matchMonth
@@ -156,9 +134,10 @@ export default function Analisi() {
 
   const filteredRevenues = useMemo(() => {
     return (data.revenues || []).filter((row) => {
-      const matchPv = selectedPv ? String(row.point_of_sale_id) === String(selectedPv) : true
+      const matchPv = selectedPv ? String(row.point_of_sale_id || '') === String(selectedPv) : true
       const matchMonth = dateRange
-        ? row.date >= dateRange.startDate && row.date < dateRange.endDate
+        ? String(row.date || '') >= dateRange.startDate &&
+          String(row.date || '') < dateRange.endDate
         : true
 
       return matchPv && matchMonth
@@ -167,8 +146,10 @@ export default function Analisi() {
 
   const filteredStaff = useMemo(() => {
     return (data.staffCosts || []).filter((row) => {
-      const matchPv = selectedPv ? String(row.point_of_sale_id) === String(selectedPv) : true
-      const matchMonth = selectedMonth ? String(row.period_month) === String(selectedMonth) : true
+      const matchPv = selectedPv ? String(row.point_of_sale_id || '') === String(selectedPv) : true
+      const matchMonth = selectedMonth
+        ? String(row.period_month || '') === String(selectedMonth)
+        : true
 
       return matchPv && matchMonth
     })
@@ -177,14 +158,15 @@ export default function Analisi() {
   const filteredManualCosts = useMemo(() => {
     return (data.manualCosts || []).filter((row) => {
       const matchMonth = dateRange
-        ? row.cost_date >= dateRange.startDate && row.cost_date < dateRange.endDate
+        ? String(row.cost_date || '') >= dateRange.startDate &&
+          String(row.cost_date || '') < dateRange.endDate
         : true
 
       if (!matchMonth) return false
       if (!selectedPv) return true
       if (row.is_general) return true
 
-      return String(row.point_of_sale_id) === String(selectedPv)
+      return String(row.point_of_sale_id || '') === String(selectedPv)
     })
   }, [data.manualCosts, selectedPv, dateRange])
 
@@ -195,16 +177,24 @@ export default function Analisi() {
     const speseManuali = sumAmounts(filteredManualCosts)
     const margine = ricavi - acquisti - costoPersonale - speseManuali
 
-    return { ricavi, acquisti, costoPersonale, speseManuali, margine }
+    return {
+      ricavi,
+      acquisti,
+      costoPersonale,
+      speseManuali,
+      margine,
+    }
   }, [filteredRevenues, filteredInvoices, filteredStaff, filteredManualCosts])
 
   const supplierAnalysis = useMemo(() => {
     const total = sumAmounts(filteredInvoices)
     let cumulato = 0
 
-    return data.suppliers
+    return (data.suppliers || [])
       .map((supplier) => {
-        const rows = filteredInvoices.filter((i) => String(i.supplier_id) === String(supplier.id))
+        const rows = filteredInvoices.filter(
+          (invoice) => String(invoice.supplier_id || '') === String(supplier.id)
+        )
         const imponibile = sumAmounts(rows)
         const fatture = rows.length
         const incidenza = total > 0 ? (imponibile / total) * 100 : 0
@@ -238,13 +228,15 @@ export default function Analisi() {
   }, [supplierAnalysis])
 
   const categoryAnalysis = useMemo(() => {
-    return data.categories
-      .map((cat) => {
-        const rows = filteredInvoices.filter((i) => String(i.category_id) === String(cat.id))
+    return (data.categories || [])
+      .map((category) => {
+        const rows = filteredInvoices.filter(
+          (invoice) => String(invoice.category_id || '') === String(category.id)
+        )
 
         return {
-          id: cat.id,
-          name: cat.name,
+          id: category.id,
+          name: category.name,
           imponibile: sumAmounts(rows),
           fatture: rows.length,
         }
@@ -254,20 +246,34 @@ export default function Analisi() {
   }, [filteredInvoices, data.categories])
 
   const pvAnalysis = useMemo(() => {
+    const totalRicavi = sumAmounts(filteredRevenues)
+
     return filteredPointsOfSale
       .map((pv) => {
-        const pvRevenues = filteredRevenues.filter((r) => String(r.point_of_sale_id) === String(pv.id))
-        const pvInvoices = filteredInvoices.filter((i) => String(i.point_of_sale_id) === String(pv.id))
-        const pvStaff = filteredStaff.filter((s) => String(s.point_of_sale_id) === String(pv.id))
-        const pvManual = filteredManualCosts.filter(
-          (m) => !m.is_general && String(m.point_of_sale_id) === String(pv.id)
+        const pvRevenues = filteredRevenues.filter(
+          (row) => String(row.point_of_sale_id || '') === String(pv.id)
         )
+        const pvInvoices = filteredInvoices.filter(
+          (row) => String(row.point_of_sale_id || '') === String(pv.id)
+        )
+        const pvStaff = filteredStaff.filter(
+          (row) => String(row.point_of_sale_id || '') === String(pv.id)
+        )
+        const pvManualDirect = filteredManualCosts.filter(
+          (row) => !row.is_general && String(row.point_of_sale_id || '') === String(pv.id)
+        )
+        const generalManualCosts = filteredManualCosts.filter((row) => !!row.is_general)
 
         const ricavi = sumAmounts(pvRevenues)
         const acquisti = sumAmounts(pvInvoices)
         const costoPersonale = sumAmounts(pvStaff)
-        const speseManuali = sumAmounts(pvManual)
-        const ore = pvStaff.reduce((sum, s) => sum + Number(s.worked_hours || 0), 0)
+
+        const speseManualiDirette = sumAmounts(pvManualDirect)
+        const quotaGenerali =
+          totalRicavi > 0 ? (sumAmounts(generalManualCosts) * ricavi) / totalRicavi : 0
+        const speseManuali = speseManualiDirette + quotaGenerali
+
+        const ore = pvStaff.reduce((sum, row) => sum + Number(row.worked_hours || 0), 0)
 
         const margine = ricavi - acquisti - costoPersonale - speseManuali
         const produttivita = ore > 0 ? ricavi / ore : 0
@@ -291,10 +297,10 @@ export default function Analisi() {
 
   const topSuppliersChart = useMemo(() => supplierAnalysis.slice(0, 10), [supplierAnalysis])
   const categoriesChart = useMemo(() => categoryAnalysis.slice(0, 10), [categoryAnalysis])
-  const pvProductivityChart = useMemo(
-    () => [...pvAnalysis].sort((a, b) => b.produttivita - a.produttivita),
-    [pvAnalysis]
-  )
+
+  const pvProductivityChart = useMemo(() => {
+    return [...pvAnalysis].sort((a, b) => b.produttivita - a.produttivita)
+  }, [pvAnalysis])
 
   const supplierTotalPages = Math.max(1, Math.ceil(supplierAnalysis.length / supplierRowsPerPage))
   const supplierStartIndex = (supplierPage - 1) * supplierRowsPerPage
@@ -344,7 +350,8 @@ export default function Analisi() {
   function buildExportFileName(baseName) {
     const monthPart = selectedMonth || 'tutti_i_mesi'
     const pvName =
-      data.pointsOfSale.find((pv) => String(pv.id) === String(selectedPv))?.name || 'tutti_i_pv'
+      (data.pointsOfSale || []).find((pv) => String(pv.id) === String(selectedPv))?.name ||
+      'tutti_i_pv'
 
     return `${sanitizeFileName(baseName)}_${sanitizeFileName(monthPart)}_${sanitizeFileName(pvName)}`
   }
@@ -408,7 +415,7 @@ export default function Analisi() {
           style={filterInputStyle}
         >
           <option value="">Tutti i PV</option>
-          {data.pointsOfSale.map((pv) => (
+          {(data.pointsOfSale || []).map((pv) => (
             <option key={pv.id} value={pv.id}>
               {pv.name}
             </option>
@@ -733,21 +740,19 @@ export default function Analisi() {
 }
 
 function BarChart({ rows, valueKey, labelKey, valueFormatter, threshold = null }) {
-  const max = Math.max(...rows.map((r) => Number(r[valueKey] || 0)), 0)
-
   if (!rows.length) {
     return <p>Nessun dato disponibile.</p>
   }
+
+  const max = Math.max(...rows.map((row) => Number(row[valueKey] || 0)), 0)
 
   return (
     <div style={chartWrapStyle}>
       {rows.map((row, index) => {
         const value = Number(row[valueKey] || 0)
         const width = max > 0 ? (value / max) * 100 : 0
-        const style =
-          threshold !== null
-            ? getProduttivitaBarStyle(value)
-            : { background: '#5bc0de' }
+        const barStyle =
+          threshold !== null ? getProduttivitaBarStyle(value) : { background: '#5bc0de' }
 
         return (
           <div key={row.id || index} style={{ marginBottom: 14 }}>
@@ -777,7 +782,7 @@ function BarChart({ rows, valueKey, labelKey, valueFormatter, threshold = null }
                 style={{
                   width: `${width}%`,
                   height: '100%',
-                  ...style,
+                  ...barStyle,
                 }}
               />
             </div>
@@ -854,8 +859,21 @@ function badgeStyle(status) {
   }
 }
 
+function getNumericAmount(row) {
+  const value =
+    row?.amount ??
+    row?.imponibile ??
+    row?.cost ??
+    row?.total_cost ??
+    row?.revenue ??
+    row?.value ??
+    0
+
+  return Number(value || 0)
+}
+
 function sumAmounts(rows) {
-  return (rows || []).reduce((sum, row) => sum + Number(row.amount || 0), 0)
+  return (rows || []).reduce((sum, row) => sum + getNumericAmount(row), 0)
 }
 
 function getNextMonth(month) {
