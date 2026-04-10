@@ -19,22 +19,38 @@ export default function Ricavi() {
   const [selectedMonth, setSelectedMonth] = useState('')
   const [pageSize, setPageSize] = useState(10)
   const [currentPage, setCurrentPage] = useState(1)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user || null))
+    let mounted = true
+
+    supabase.auth.getUser().then(({ data }) => {
+      if (!mounted) return
+      setUser(data.user || null)
+      setLoading(false)
+    })
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null)
+      setLoading(false)
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   useEffect(() => {
-    if (user) loadData()
-  }, [user, selectedMonth])
+    if (user?.id) {
+      loadData()
+    } else if (!loading) {
+      setRows([])
+      setPointsOfSale([])
+    }
+  }, [user, selectedMonth, loading])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -52,11 +68,14 @@ export default function Ricavi() {
   }
 
   async function loadData() {
+    if (!user?.id) return
+
     setMessage('')
 
     let revenuesQuery = supabase
       .from('revenues')
       .select('*')
+      .eq('user_id', user.id)
       .order('date', { ascending: false })
 
     if (selectedMonth) {
@@ -71,7 +90,11 @@ export default function Ricavi() {
     const [{ data: rev, error: revError }, { data: pv, error: pvError }] =
       await Promise.all([
         revenuesQuery,
-        supabase.from('points_of_sale').select('*').order('name'),
+        supabase
+          .from('points_of_sale')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('name'),
       ])
 
     if (revError || pvError) {
@@ -87,10 +110,21 @@ export default function Ricavi() {
     e.preventDefault()
     setMessage('')
 
+    if (!user?.id) {
+      setMessage('Utente non autenticato.')
+      return
+    }
+
+    if (!form.date || !form.amount || !form.point_of_sale_id) {
+      setMessage('Compila data, importo e punto vendita.')
+      return
+    }
+
     const payload = {
-      date: form.date || null,
-      amount: form.amount ? Number(form.amount) : null,
-      point_of_sale_id: form.point_of_sale_id || null,
+      user_id: user.id,
+      date: form.date,
+      amount: Number(form.amount),
+      point_of_sale_id: form.point_of_sale_id,
     }
 
     if (editingId) {
@@ -98,6 +132,7 @@ export default function Ricavi() {
         .from('revenues')
         .update(payload)
         .eq('id', editingId)
+        .eq('user_id', user.id)
 
       if (error) {
         setMessage(error.message)
@@ -106,7 +141,7 @@ export default function Ricavi() {
 
       setMessage('Ricavo aggiornato.')
     } else {
-      const { error } = await supabase.from('revenues').insert(payload)
+      const { error } = await supabase.from('revenues').insert([payload])
 
       if (error) {
         setMessage(error.message)
@@ -117,7 +152,7 @@ export default function Ricavi() {
     }
 
     resetForm()
-    loadData()
+    await loadData()
   }
 
   function handleEdit(row) {
@@ -128,13 +163,18 @@ export default function Ricavi() {
       point_of_sale_id: row.point_of_sale_id || '',
     })
     setMessage('')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   async function handleDelete(id) {
     const conferma = window.confirm('Vuoi davvero cancellare questo ricavo?')
-    if (!conferma) return
+    if (!conferma || !user?.id) return
 
-    const { error } = await supabase.from('revenues').delete().eq('id', id)
+    const { error } = await supabase
+      .from('revenues')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', user.id)
 
     if (error) {
       setMessage(error.message)
@@ -144,7 +184,7 @@ export default function Ricavi() {
     if (editingId === id) resetForm()
 
     setMessage('Ricavo cancellato.')
-    loadData()
+    await loadData()
   }
 
   function resetForm() {
@@ -162,6 +202,14 @@ export default function Ricavi() {
 
   function goToNextPage() {
     setCurrentPage((prev) => Math.min(totalPages, prev + 1))
+  }
+
+  if (loading) {
+    return (
+      <div style={{ padding: 40, fontFamily: 'Arial, sans-serif' }}>
+        <p>Caricamento...</p>
+      </div>
+    )
   }
 
   if (!user) {
@@ -187,7 +235,11 @@ export default function Ricavi() {
           onChange={(e) => setSelectedMonth(e.target.value)}
           style={filterInputStyle}
         />
-        <button type="button" onClick={() => setSelectedMonth('')} style={secondaryButtonStyle}>
+        <button
+          type="button"
+          onClick={() => setSelectedMonth('')}
+          style={secondaryButtonStyle}
+        >
           Tutti
         </button>
 
@@ -204,10 +256,7 @@ export default function Ricavi() {
         </select>
       </div>
 
-      <form
-        onSubmit={handleSubmit}
-        style={formWrapStyle}
-      >
+      <form onSubmit={handleSubmit} style={formWrapStyle}>
         <input
           type="date"
           value={form.date}
@@ -241,6 +290,7 @@ export default function Ricavi() {
           <button type="submit" style={primaryButtonStyle}>
             {editingId ? 'Aggiorna' : 'Salva'}
           </button>
+
           {editingId && (
             <button type="button" onClick={resetForm} style={secondaryButtonStyle}>
               Annulla
@@ -278,15 +328,23 @@ export default function Ricavi() {
             <tbody>
               {paginatedRows.map((row) => (
                 <tr key={row.id}>
-                  <td style={td}>{row.date || ''}</td>
-                  <td style={td}>{row.amount || ''}</td>
+                  <td style={td}>{formatDate(row.date)}</td>
+                  <td style={td}>{formatCurrency(row.amount)}</td>
                   <td style={td}>{getPvName(row.point_of_sale_id)}</td>
                   <td style={td}>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="button" onClick={() => handleEdit(row)} style={smallButtonStyle}>
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(row)}
+                        style={smallButtonStyle}
+                      >
                         Modifica
                       </button>
-                      <button type="button" onClick={() => handleDelete(row.id)} style={smallDangerButtonStyle}>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(row.id)}
+                        style={smallDangerButtonStyle}
+                      >
                         Cancella
                       </button>
                     </div>
@@ -332,6 +390,21 @@ function getNextMonth(month) {
   }
 
   return `${nextYear}-${String(nextMonth).padStart(2, '0')}`
+}
+
+function formatDate(value) {
+  if (!value) return ''
+  const [year, month, day] = value.split('-')
+  if (!year || !month || !day) return value
+  return `${day}/${month}/${year}`
+}
+
+function formatCurrency(value) {
+  if (value === null || value === undefined || value === '') return ''
+  return new Intl.NumberFormat('it-IT', {
+    style: 'currency',
+    currency: 'EUR',
+  }).format(Number(value))
 }
 
 const pageHeaderStyle = {
