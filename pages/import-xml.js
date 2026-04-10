@@ -293,7 +293,7 @@ export default function ImportXml() {
           supplier_name: row.supplier_name || null,
           invoice_date: row.invoice_date || null,
           invoice_number: row.invoice_number || null,
-          amount: row.amount ? Number(row.amount) : null,
+          amount: row.amount !== '' ? Number(row.amount) : null,
           point_of_sale_id: mapping?.is_general ? null : mapping?.point_of_sale_id || null,
           category_id: mapping?.category_id || null,
           is_general: !!mapping?.is_general,
@@ -301,7 +301,7 @@ export default function ImportXml() {
         })
       }
 
-           if (invoicesToInsert.length > 0) {
+      if (invoicesToInsert.length > 0) {
         for (const invoice of invoicesToInsert) {
           const { error: insertInvoiceError } = await supabase
             .from('invoices')
@@ -449,16 +449,24 @@ function parseFatturaXml(xmlText, filename) {
   const invoiceNumber = getNodeText(xml, 'DatiGeneraliDocumento Numero')
   const invoiceDate = getNodeText(xml, 'DatiGeneraliDocumento Data')
 
-  let amount = getNodeText(xml, 'DatiGeneraliDocumento ImportoTotaleDocumento')
+  const imponibili = getAllNodeTexts(xml, 'DatiRiepilogo ImponibileImporto')
+    .map((v) => Number(sanitizeNumber(v)))
+    .filter((v) => !Number.isNaN(v))
 
-  if (!amount) {
-    const imponibili = getAllNodeTexts(xml, 'DatiRiepilogo ImponibileImporto')
-      .map((v) => Number(sanitizeNumber(v)))
-      .filter((v) => !Number.isNaN(v))
+  const lineTotals = getAllNodeTexts(xml, 'DettaglioLinee PrezzoTotale')
+    .map((v) => Number(sanitizeNumber(v)))
+    .filter((v) => !Number.isNaN(v))
 
-    if (imponibili.length > 0) {
-      amount = String(imponibili.reduce((sum, v) => sum + v, 0))
-    }
+  const totalDocument = Number(sanitizeNumber(getNodeText(xml, 'DatiGeneraliDocumento ImportoTotaleDocumento') || ''))
+
+  let amount = ''
+
+  if (imponibili.length > 0) {
+    amount = String(imponibili.reduce((sum, v) => sum + v, 0))
+  } else if (lineTotals.length > 0) {
+    amount = String(lineTotals.reduce((sum, v) => sum + v, 0))
+  } else if (!Number.isNaN(totalDocument) && totalDocument > 0) {
+    amount = String(totalDocument)
   }
 
   if (!supplierName) {
