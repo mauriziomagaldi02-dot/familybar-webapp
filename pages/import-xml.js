@@ -301,17 +301,18 @@ export default function ImportXml() {
         })
       }
 
-      if (invoicesToInsert.length > 0) {
-        const { data: insertedInvoices, error: insertInvoicesError } = await supabase
-          .from('invoices')
-          .insert(invoicesToInsert)
-          .select('id')
+           if (invoicesToInsert.length > 0) {
+        for (const invoice of invoicesToInsert) {
+          const { error: insertInvoiceError } = await supabase
+            .from('invoices')
+            .insert(invoice)
 
-        if (insertInvoicesError) {
-          throw new Error(insertInvoicesError.message || 'Errore inserimento fatture')
+          if (insertInvoiceError) {
+            skipped += 1
+          } else {
+            inserted += 1
+          }
         }
-
-        inserted += insertedInvoices?.length || invoicesToInsert.length
       }
 
       const totalRowsWithError = previewRows.filter((row) => row.error).length
