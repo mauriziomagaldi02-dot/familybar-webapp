@@ -151,40 +151,17 @@ export default function ImportXml() {
                   ? 'Codice fiscale'
                   : 'Nome'
               : '',
-            duplicate_in_preview: false,
           }
         } catch (error) {
           return {
             source_filename: file.name,
             error: error.message || 'Errore parsing XML',
-            duplicate_in_preview: false,
           }
         }
       })
     )
 
-    const seen = new Set()
-    const rowsWithPreviewDuplicateFlag = parsedRows.map((row) => {
-      if (row.error) return row
-
-      const key = buildInvoiceDuplicateKey({
-        supplier_id: row.supplier_id || '',
-        normalized_supplier_name: row.normalized_supplier_name || '',
-        normalized_vat_number: row.normalized_vat_number || '',
-        normalized_tax_code: row.normalized_tax_code || '',
-        invoice_number: row.invoice_number || '',
-        invoice_date: row.invoice_date || '',
-      })
-
-      if (seen.has(key)) {
-        return { ...row, duplicate_in_preview: true }
-      }
-
-      seen.add(key)
-      return row
-    })
-
-    setPreviewRows(rowsWithPreviewDuplicateFlag)
+    setPreviewRows(parsedRows)
   }
 
   async function handleImport() {
@@ -199,7 +176,6 @@ export default function ImportXml() {
     try {
       let inserted = 0
       let createdSuppliers = 0
-      let duplicates = 0
       let skipped = 0
 
       const localSuppliersByName = new Map()
@@ -221,7 +197,7 @@ export default function ImportXml() {
         if (m.supplier_id) localMappingsMap.set(String(m.supplier_id), m)
       }
 
-      const validRows = previewRows.filter((row) => !row.error && !row.duplicate_in_preview)
+      const validRows = previewRows.filter((row) => !row.error)
 
       const supplierCreateCandidatesMap = new Map()
 
@@ -296,9 +272,7 @@ export default function ImportXml() {
         }
       }
 
-      const invoiceKeysToCheck = []
-      const candidateInvoices = []
-      const localPreviewInvoiceKeys = new Set()
+      const invoicesToInsert = []
 
       for (const row of validRows) {
         const supplier =
@@ -312,27 +286,9 @@ export default function ImportXml() {
           continue
         }
 
-        const duplicateKey = buildPersistedInvoiceKey(
-          supplier.id,
-          row.invoice_number,
-          row.invoice_date
-        )
-
-        if (localPreviewInvoiceKeys.has(duplicateKey)) {
-          duplicates += 1
-          continue
-        }
-
-        localPreviewInvoiceKeys.add(duplicateKey)
-        invoiceKeysToCheck.push({
-          supplier_id: supplier.id,
-          invoice_number: row.invoice_number || '',
-          invoice_date: row.invoice_date || '',
-        })
-
         const mapping = localMappingsMap.get(String(supplier.id)) || null
 
-        candidateInvoices.push({
+        invoicesToInsert.push({
           supplier_id: supplier.id,
           supplier_name: row.supplier_name || null,
           invoice_date: row.invoice_date || null,
@@ -345,23 +301,6 @@ export default function ImportXml() {
         })
       }
 
-      const existingKeys = await loadExistingInvoiceKeys(invoiceKeysToCheck)
-
-      const invoicesToInsert = []
-      for (const invoice of candidateInvoices) {
-        const key = buildPersistedInvoiceKey(
-          invoice.supplier_id,
-          invoice.invoice_number,
-          invoice.invoice_date
-        )
-
-        if (existingKeys.has(key)) {
-          duplicates += 1
-        } else {
-          invoicesToInsert.push(invoice)
-        }
-      }
-
       if (invoicesToInsert.length > 0) {
         const { data: insertedInvoices, error: insertInvoicesError } = await supabase
           .from('invoices')
@@ -369,42 +308,17 @@ export default function ImportXml() {
           .select('id')
 
         if (insertInvoicesError) {
-          if (insertInvoicesError.code === '23505') {
-            const refreshKeys = await loadExistingInvoiceKeys(
-              invoicesToInsert.map((row) => ({
-                supplier_id: row.supplier_id,
-                invoice_number: row.invoice_number || '',
-                invoice_date: row.invoice_date || '',
-              }))
-            )
-
-            for (const row of invoicesToInsert) {
-              const key = buildPersistedInvoiceKey(
-                row.supplier_id,
-                row.invoice_number,
-                row.invoice_date
-              )
-              if (refreshKeys.has(key)) {
-                duplicates += 1
-              } else {
-                skipped += 1
-              }
-            }
-          } else {
-            throw new Error(insertInvoicesError.message || 'Errore inserimento fatture')
-          }
-        } else {
-          inserted += insertedInvoices?.length || invoicesToInsert.length
+          throw new Error(insertInvoicesError.message || 'Errore inserimento fatture')
         }
+
+        inserted += insertedInvoices?.length || invoicesToInsert.length
       }
 
       const totalRowsWithError = previewRows.filter((row) => row.error).length
-      const totalPreviewDuplicates = previewRows.filter((row) => row.duplicate_in_preview).length
       skipped += totalRowsWithError
-      duplicates += totalPreviewDuplicates
 
       setMessage(
-        `Import completato. Inserite: ${inserted}. Nuovi fornitori creati: ${createdSuppliers}. Duplicati saltati: ${duplicates}. Saltate: ${skipped}.`
+        `Import completato. Inserite: ${inserted}. Nuovi fornitori creati: ${createdSuppliers}. Saltate: ${skipped}.`
       )
 
       setPreviewRows([])
@@ -414,48 +328,6 @@ export default function ImportXml() {
     } finally {
       setIsImporting(false)
     }
-  }
-
-  async function loadExistingInvoiceKeys(items) {
-    const keys = new Set()
-    if (!items.length) return keys
-
-    const uniqueItemsMap = new Map()
-    for (const item of items) {
-      const key = buildPersistedInvoiceKey(item.supplier_id, item.invoice_number, item.invoice_date)
-      uniqueItemsMap.set(key, item)
-    }
-
-    const uniqueItems = Array.from(uniqueItemsMap.values())
-    const batchSize = 100
-
-    for (let i = 0; i < uniqueItems.length; i += batchSize) {
-      const batch = uniqueItems.slice(i, i + batchSize)
-
-      const orFilters = batch
-        .filter((item) => item.supplier_id && item.invoice_date)
-        .map((item) => {
-          const safeInvoiceNumber = String(item.invoice_number || '').replace(/"/g, '\\"')
-          return `and(supplier_id.eq.${item.supplier_id},invoice_date.eq.${item.invoice_date},invoice_number.eq."${safeInvoiceNumber}")`
-        })
-
-      if (!orFilters.length) continue
-
-      const { data, error } = await supabase
-        .from('invoices')
-        .select('supplier_id, invoice_number, invoice_date')
-        .or(orFilters.join(','))
-
-      if (error) {
-        throw new Error(error.message || 'Errore verifica duplicati fatture')
-      }
-
-      for (const row of data || []) {
-        keys.add(buildPersistedInvoiceKey(row.supplier_id, row.invoice_number, row.invoice_date))
-      }
-    }
-
-    return keys
   }
 
   if (!user) {
@@ -537,13 +409,11 @@ export default function ImportXml() {
                   <td style={td}>
                     {row.error
                       ? `Errore: ${row.error}`
-                      : row.duplicate_in_preview
-                        ? 'Duplicato nel caricamento'
-                        : row.supplier_id
-                          ? 'Pronto'
-                          : row.will_create_supplier
-                            ? 'Nuovo fornitore: verrà creato'
-                            : 'Pronto'}
+                      : row.supplier_id
+                        ? 'Pronto'
+                        : row.will_create_supplier
+                          ? 'Nuovo fornitore: verrà creato'
+                          : 'Pronto'}
                   </td>
                 </tr>
               ))}
@@ -678,25 +548,6 @@ function buildSupplierKey(row) {
     row.normalized_vat_number || '',
     row.normalized_tax_code || '',
     row.normalized_supplier_name || '',
-  ].join('|')
-}
-
-function buildInvoiceDuplicateKey(row) {
-  return [
-    row.supplier_id || '',
-    row.normalized_supplier_name || '',
-    row.normalized_vat_number || '',
-    row.normalized_tax_code || '',
-    String(row.invoice_number || '').trim().toLowerCase(),
-    row.invoice_date || '',
-  ].join('|')
-}
-
-function buildPersistedInvoiceKey(supplierId, invoiceNumber, invoiceDate) {
-  return [
-    String(supplierId || ''),
-    String(invoiceNumber || '').trim().toLowerCase(),
-    String(invoiceDate || ''),
   ].join('|')
 }
 
