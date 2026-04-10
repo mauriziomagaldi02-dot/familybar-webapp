@@ -35,9 +35,7 @@ export default function Fatture() {
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
   const [updatingCellId, setUpdatingCellId] = useState(null)
-
-  const [newCategoryName, setNewCategoryName] = useState('')
-  const [creatingCategory, setCreatingCategory] = useState(false)
+  const [deletingAll, setDeletingAll] = useState(false)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -206,49 +204,6 @@ export default function Fatture() {
     }
   }
 
-  async function handleCreateCategory() {
-    const cleanedName = newCategoryName.trim()
-
-    if (!cleanedName) {
-      setMessage('Inserisci il nome della nuova categoria')
-      return
-    }
-
-    const alreadyExists = categories.find(
-      (cat) => String(cat.name || '').trim().toLowerCase() === cleanedName.toLowerCase()
-    )
-
-    if (alreadyExists) {
-      setForm((prev) => ({ ...prev, category_id: alreadyExists.id }))
-      setNewCategoryName('')
-      setMessage('Categoria già esistente. Selezionata automaticamente.')
-      return
-    }
-
-    setCreatingCategory(true)
-    setMessage('')
-
-    const { data, error } = await supabase
-      .from('categories')
-      .insert({ name: cleanedName })
-      .select()
-      .single()
-
-    if (error) {
-      setMessage(`Errore creazione categoria: ${error.message}`)
-      setCreatingCategory(false)
-      return
-    }
-
-    setCategories((prev) =>
-      [...prev, data].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
-    )
-    setForm((prev) => ({ ...prev, category_id: data.id }))
-    setNewCategoryName('')
-    setMessage('Categoria creata.')
-    setCreatingCategory(false)
-  }
-
   async function handleSubmit(e) {
     e.preventDefault()
     setMessage('')
@@ -380,6 +335,47 @@ export default function Fatture() {
     setDeletingId(null)
   }
 
+  async function handleDeleteAllInvoices() {
+    if (!allRows.length) {
+      setMessage('Non ci sono fatture da cancellare.')
+      return
+    }
+
+    const firstConfirm = window.confirm(
+      `Stai per cancellare TUTTE le fatture (${allRows.length} record). Continuare?`
+    )
+    if (!firstConfirm) return
+
+    const secondConfirm = window.prompt(
+      'Operazione irreversibile. Per confermare scrivi CANCELLA TUTTO'
+    )
+
+    if (secondConfirm !== 'CANCELLA TUTTO') {
+      setMessage('Cancellazione annullata.')
+      return
+    }
+
+    setDeletingAll(true)
+    setMessage('')
+
+    const { error } = await supabase
+      .from('invoices')
+      .delete()
+      .not('id', 'is', null)
+
+    if (error) {
+      setMessage(error.message)
+      setDeletingAll(false)
+      return
+    }
+
+    setAllRows([])
+    resetForm()
+    setCurrentPage(1)
+    setMessage('Tutte le fatture sono state cancellate.')
+    setDeletingAll(false)
+  }
+
   async function updateInvoiceInline(invoiceId, updates, successMessage = 'Fattura aggiornata.') {
     setUpdatingCellId(invoiceId)
     setMessage('')
@@ -452,7 +448,6 @@ export default function Fatture() {
   function resetForm() {
     setForm(initialForm)
     setEditingId(null)
-    setNewCategoryName('')
   }
 
   function getSupplierName(id) {
@@ -546,6 +541,17 @@ export default function Fatture() {
         </select>
       </div>
 
+      <div style={dangerZoneWrapStyle}>
+        <button
+          type="button"
+          onClick={handleDeleteAllInvoices}
+          style={deletingAll ? disabledDangerMainButtonStyle : dangerMainButtonStyle}
+          disabled={deletingAll}
+        >
+          {deletingAll ? 'Cancellazione totale...' : 'Cancella tutte le fatture'}
+        </button>
+      </div>
+
       <form onSubmit={handleSubmit} style={formWrapStyle}>
         <select
           value={form.supplier_id}
@@ -627,24 +633,6 @@ export default function Fatture() {
           ))}
         </select>
 
-        <div style={newCategoryWrapStyle}>
-          <input
-            type="text"
-            placeholder="Nuova categoria"
-            value={newCategoryName}
-            onChange={(e) => setNewCategoryName(e.target.value)}
-            style={fieldStyle}
-          />
-          <button
-            type="button"
-            onClick={handleCreateCategory}
-            style={creatingCategory ? disabledPrimaryButtonStyle : primaryButtonStyle}
-            disabled={creatingCategory}
-          >
-            {creatingCategory ? 'Creazione...' : 'Crea categoria'}
-          </button>
-        </div>
-
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button
             type="submit"
@@ -702,62 +690,16 @@ export default function Fatture() {
                     <td style={td}>{row.invoice_number || ''}</td>
                     <td style={td}>{formatEuro(row.amount)}</td>
                     <td style={td}>{getSupplierName(row.supplier_id)}</td>
-
-                    <td style={td}>
-                      {row.is_general ? (
-                        <span style={inlineMutedTextStyle}>Generale</span>
-                      ) : (
-                        <select
-                          value={row.point_of_sale_id || ''}
-                          onChange={(e) => handleInlinePvChange(row.id, e.target.value, row)}
-                          style={inlineSelectStyle}
-                          disabled={updatingCellId === row.id}
-                        >
-                          <option value="">Seleziona PV</option>
-                          {pointsOfSale.map((pv) => (
-                            <option key={pv.id} value={pv.id}>
-                              {pv.name}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </td>
-
-                    <td style={td}>
-                      <select
-                        value={row.category_id || ''}
-                        onChange={(e) => handleInlineCategoryChange(row.id, e.target.value)}
-                        style={inlineSelectStyle}
-                        disabled={updatingCellId === row.id}
-                      >
-                        <option value="">Seleziona categoria</option>
-                        {categories.map((cat) => (
-                          <option key={cat.id} value={cat.id}>
-                            {cat.name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-
-                    <td style={td}>
-                      <label style={inlineCheckboxLabelStyle}>
-                        <input
-                          type="checkbox"
-                          checked={!!row.is_general}
-                          onChange={(e) => handleInlineGeneralChange(row.id, e.target.checked)}
-                          disabled={updatingCellId === row.id}
-                        />
-                        {' '}Sì
-                      </label>
-                    </td>
-
+                    <td style={td}>{row.is_general ? '' : getPvName(row.point_of_sale_id)}</td>
+                    <td style={td}>{getCategoryName(row.category_id)}</td>
+                    <td style={td}>{row.is_general ? 'Sì' : 'No'}</td>
                     <td style={td}>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                         <button
                           type="button"
                           onClick={() => handleEdit(row)}
                           style={smallButtonStyle}
-                          disabled={deletingId === row.id || updatingCellId === row.id}
+                          disabled={deletingId === row.id || deletingAll}
                         >
                           Modifica
                         </button>
@@ -766,7 +708,7 @@ export default function Fatture() {
                           type="button"
                           onClick={() => handleDelete(row.id)}
                           style={deletingId === row.id ? disabledDangerButtonStyle : smallDangerButtonStyle}
-                          disabled={deletingId === row.id || updatingCellId === row.id}
+                          disabled={deletingId === row.id || deletingAll}
                         >
                           {deletingId === row.id ? 'Cancellazione...' : 'Cancella'}
                         </button>
@@ -846,6 +788,12 @@ const filtersWrapStyle = {
   marginBottom: 12,
 }
 
+const dangerZoneWrapStyle = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+  marginBottom: 12,
+}
+
 const filterLabelStyle = {
   fontSize: 14,
   fontWeight: 600,
@@ -916,6 +864,28 @@ const secondaryButtonStyle = {
   background: '#fff',
   cursor: 'pointer',
   fontSize: 14,
+}
+
+const dangerMainButtonStyle = {
+  padding: '10px 14px',
+  border: '1px solid #ef4444',
+  borderRadius: 10,
+  background: '#b91c1c',
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: 14,
+  fontWeight: 700,
+}
+
+const disabledDangerMainButtonStyle = {
+  padding: '10px 14px',
+  border: '1px solid #fca5a5',
+  borderRadius: 10,
+  background: '#fca5a5',
+  color: '#fff',
+  cursor: 'not-allowed',
+  fontSize: 14,
+  fontWeight: 700,
 }
 
 const disabledButtonStyle = {
@@ -1016,31 +986,4 @@ const td = {
   padding: 10,
   fontSize: 14,
   color: '#111827',
-}
-
-const inlineSelectStyle = {
-  padding: '8px 10px',
-  border: '1px solid #d1d5db',
-  borderRadius: 8,
-  background: '#fff',
-  fontSize: 13,
-  minWidth: 150,
-}
-
-const inlineCheckboxLabelStyle = {
-  fontSize: 13,
-  color: '#111827',
-  whiteSpace: 'nowrap',
-}
-
-const inlineMutedTextStyle = {
-  fontSize: 13,
-  color: '#6b7280',
-}
-
-const newCategoryWrapStyle = {
-  display: 'grid',
-  gridTemplateColumns: '1fr auto',
-  gap: 10,
-  alignItems: 'center',
 }
